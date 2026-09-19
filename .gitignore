@@ -1,0 +1,14 @@
+*.nc
+*.h5
+*.npz
+*.npy
+*.tif
+*.png
+*.jpg
+
+tmp/
+cache/
+logs/
+
+__pycache__/
+*.pyc
