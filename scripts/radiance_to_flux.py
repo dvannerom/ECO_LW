@@ -9,34 +9,18 @@ import psutil
 import os
 import gc
 from netcdf_io import load_data, write_dataset
+from adm import elmer, radiance_linear as radiance
+from radiometry import radiance_to_brightness_temperature
+
+
+ABI_CHANNELS = (0, 3, 4, 6, 7, 8)
+
 
 def index_to_channel(index):
-	if index==0: return 0
-	elif index==1: return 3
-	elif index==2: return 4
-	elif index==3: return 6
-	elif index==4: return 7
-	elif index==5: return 8
-
-def rad_to_T(rad,planck):
-	ratio = planck[0]/rad
-	a = ratio + 1
-	b = np.log(a)
-	c = planck[1]/b
-	d = c - planck[2]
-	return d/planck[3]
+	return ABI_CHANNELS[index]
 
 def Tbb(Tnb, c0, c1, c2, c3, c4, c5, c6):
 	return c0 + c1*Tnb[0] + c2*Tnb[1] + c3*Tnb[2] + c4*Tnb[3] + c5*Tnb[4] + c6*Tnb[5]
-
-def elmer(x):
-	cos = np.cos(np.radians(x))
-	cos55 = np.cos(np.radians(55))
-	return np.log(cos+2)/np.log(cos55+2)
-
-def radiance(x, b):
-	x = elmer(x)
-	return 1 + b*(x-1)
 
 if __name__ == '__main__':
     
@@ -157,8 +141,8 @@ if __name__ == '__main__':
 		)
 
 		# Convert corrected radiances to BT
-		BT_G16 = rad_to_T(rad_interp_G16_corr,planck_G16)
-		BT_G18 = rad_to_T(rad_interp_G18_corr,planck_G18)
+		BT_G16 = radiance_to_brightness_temperature(rad_interp_G16_corr, planck_G16)
+		BT_G18 = radiance_to_brightness_temperature(rad_interp_G18_corr, planck_G18)
 		print(
 		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 		    "GB"

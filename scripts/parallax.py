@@ -9,9 +9,9 @@ from sklearn.preprocessing import StandardScaler
 from scipy.stats import norm
 import math
 import argparse
+from geospatial import normalize_longitude
 
-def to_minus180_180(lon):
-	return ((lon + 180.0) % 360.0) - 180.0
+to_minus180_180 = normalize_longitude
 
 if __name__ == '__main__':
     

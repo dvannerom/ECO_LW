@@ -15,54 +15,20 @@ import math
 import argparse
 import psutil
 import os
+from adm import (
+	flux_integrand,
+	flux_upward_integrand,
+	radiance_integrand,
+	radiance_linear as radiance_lin,
+	radiance_linear_normalized as radiance_lin_norm,
+	radiance_linear_ratio as radiance_lin_ratio,
+	radiance_quadratic as radiance_quad,
+	radiance_quadratic_normalized as radiance_quad_norm,
+	radiance_quadratic_ratio as radiance_quad_ratio,
+)
 from netcdf_io import load_data, write_dataset
 
 mpl.rcParams["mathtext.default"] = 'regular'
-
-def elmer(x):
-	cos = np.cos(np.radians(x))
-	cos55 = np.cos(np.radians(55))
-	return np.log(cos+2)/np.log(cos55+2)
-
-def fit_fct_diff(x, a, b):
-	term1 = a*(elmer(x[0])-1) + b*(elmer(x[0])**2-1)
-	term2 = a*(elmer(x[1])-1) + b*(elmer(x[1])**2-1)
-	return term1-term2
-
-def fit_fct_diff_1D(x, a, b):
-	return a*(elmer(x)-1) + b*(elmer(x)**2-1)
-
-def radiance_lin(x, b):
-	x = elmer(x)
-	return 1 + b*(x-1)
-
-def radiance_integrand(x, b):
-	return radiance_lin(x, b)*np.sin(np.radians(x))*np.radians(1)
-
-def radiance_lin_norm(x, a):
-	b = x[1]
-	return a*radiance_lin(x[0], b)
-
-def radiance_lin_ratio(x, b):
-	return radiance_lin(x[0], b)/radiance_lin(x[1], b)
-
-def radiance_quad(x, b, c):
-	x = elmer(x)
-	return 1 + b*x + c*x**2
-
-def radiance_quad_norm(x, a):
-	b = x[1]
-	c = x[2]
-	return a*radiance_quad(x[0], b, c)
-
-def radiance_quad_ratio(x, b, c):
-	return radiance_quad(x[0], b, c)/radiance_quad(x[1], b, c)
-
-def flux_integrand(x, a, b):
-	return radiance_norm((x,b), a)*np.sin(np.radians(x))
-
-def flux_upward_integrand(x, a, b):
-	return radiance_norm((x,b), a)*np.cos(np.radians(x))*np.sin(np.radians(x))
 
 if __name__ == '__main__':
     

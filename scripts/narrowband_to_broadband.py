@@ -7,14 +7,6 @@ import psutil
 import os
 from netcdf_io import load_data, write_dataset
 
-def rad_to_T(rad,planck_fk1,planck_fk2,planck_bc1,planck_bc2):
-	ratio = planck_fk1/rad
-	a = ratio + 1
-	b = np.log(a)
-	c = planck_fk2/b
-	d = c - planck_bc1
-	return d/planck_bc2
-
 def cubic_regression(rad, coeff, intercept):
 
 	x0 = rad[:, 0]

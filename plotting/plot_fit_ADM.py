@@ -13,27 +13,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.integrate import quad
+from adm import (
+    radiance_linear as radiance_lin,
+    radiance_linear_normalized as radiance_lin_norm,
+    radiance_linear_ratio as radiance_lin_ratio,
+)
 from netcdf_io import load_data
-
-
-def elmer(x):
-    cos = np.cos(np.radians(x))
-    cos55 = np.cos(np.radians(55))
-    return np.log(cos + 2) / np.log(cos55 + 2)
-
-
-def radiance_lin(x, b):
-    x = elmer(x)
-    return 1 + b * (x - 1)
-
-
-def radiance_lin_norm(x, a):
-    b = x[1]
-    return a * radiance_lin(x[0], b)
-
-
-def radiance_lin_ratio(x, b):
-    return radiance_lin(x[0], b) / radiance_lin(x[1], b)
 
 
 def plot_fit_adm(data_file, scene_file, channel, scene, output_dir="figures/ADM"):
