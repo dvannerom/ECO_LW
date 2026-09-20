@@ -14,79 +14,101 @@ import argparse
 import joblib
 from netcdf_io import load_data, write_dataset
 
-def build_arrays(input_file):
-	# -----------------------------
-	# Retrieve data
-	# -----------------------------
+def build_arrays(input_file, chunk_rows=2048):
+	"""Build valid-pixel feature arrays in manageable row chunks.
+
+	This avoids materializing several full-scene float arrays simultaneously,
+	which can exhaust memory for large GOES granules.
+	"""
 	dataset = load_data(input_file)
-	#width = npzfile['arr_0']
-	#height = npzfile['arr_1']
-	width = dataset['width']
-	height = dataset['height']
 	lat_interp_grid = dataset['lat_interp_grid']
 	lon_interp_grid = dataset['lon_interp_grid']
 
-	lza_interp_grid_G16 = np.cos(np.radians(dataset['lza_G16_interp'])).flatten()
-	lza_interp_grid_G18 = np.cos(np.radians(dataset['lza_G18_interp'])).flatten()
+	ny, nx = lat_interp_grid.shape
+	flat_mask = np.zeros((ny, nx), dtype=bool)
+	valid_features = []
+	valid_positions = []
 
-	BT_C08_interp_G16 = dataset['BT_G16_interp'][:, :, 0].flatten()
-	BT_C11_interp_G16 = dataset['BT_G16_interp'][:, :, 3].flatten()
-	BT_C12_interp_G16 = dataset['BT_G16_interp'][:, :, 4].flatten()
-	BT_C14_interp_G16 = dataset['BT_G16_interp'][:, :, 6].flatten()
-	BT_C15_interp_G16 = dataset['BT_G16_interp'][:, :, 7].flatten()
-	BT_C16_interp_G16 = dataset['BT_G16_interp'][:, :, 8].flatten()
+	for y0 in range(0, ny, chunk_rows):
+		y1 = min(y0 + chunk_rows, ny)
+		BT_G16_block = dataset['BT_G16_interp'][y0:y1]
+		BT_G18_block = dataset['BT_G18_interp'][y0:y1]
 
-	BT_C08_interp_G18 = dataset['BT_G18_interp'][:, :, 0].flatten()
-	BT_C11_interp_G18 = dataset['BT_G18_interp'][:, :, 3].flatten()
-	BT_C12_interp_G18 = dataset['BT_G18_interp'][:, :, 4].flatten()
-	BT_C14_interp_G18 = dataset['BT_G18_interp'][:, :, 6].flatten()
-	BT_C15_interp_G18 = dataset['BT_G18_interp'][:, :, 7].flatten()
-	BT_C16_interp_G18 = dataset['BT_G18_interp'][:, :, 8].flatten()
+		# Pull the channels used to define the scene features.
+		BT_C08_interp_G16 = BT_G16_block[:, :, 0].astype(np.float32, copy=False)
+		BT_C11_interp_G16 = BT_G16_block[:, :, 3].astype(np.float32, copy=False)
+		BT_C12_interp_G16 = BT_G16_block[:, :, 4].astype(np.float32, copy=False)
+		BT_C14_interp_G16 = BT_G16_block[:, :, 6].astype(np.float32, copy=False)
+		BT_C15_interp_G16 = BT_G16_block[:, :, 7].astype(np.float32, copy=False)
+		BT_C16_interp_G16 = BT_G16_block[:, :, 8].astype(np.float32, copy=False)
 
-	# Define averages
-	BT_C08_av = (BT_C08_interp_G16 + BT_C08_interp_G18)/2
-	BT_C11_av = (BT_C11_interp_G16 + BT_C11_interp_G18)/2
-	BT_C12_av = (BT_C12_interp_G16 + BT_C12_interp_G18)/2
-	BT_C14_av = (BT_C14_interp_G16 + BT_C14_interp_G18)/2
-	BT_C15_av = (BT_C15_interp_G16 + BT_C15_interp_G18)/2
-	BT_C16_av = (BT_C16_interp_G16 + BT_C16_interp_G18)/2
-	BT_diff1 = BT_C14_av - BT_C11_av
-	BT_diff2 = BT_C14_av - BT_C15_av
-	BT_diff3 = BT_C14_av - BT_C08_av
-	BT_diff4 = BT_C14_av - BT_C16_av
-	
-	BT = np.stack([
-	    BT_C08_av, BT_C11_av, BT_C12_av, BT_C14_av, BT_C15_av, BT_C16_av,
-	    BT_diff1, BT_diff2, BT_diff3, BT_diff4
-	], axis=-1).reshape(-1, 10)
-	
-	# Mask invalids
-	BT_mask = np.stack([
-	    BT_C08_interp_G16, BT_C11_interp_G16, BT_C12_interp_G16, BT_C14_interp_G16, BT_C15_interp_G16, BT_C16_interp_G16,
-	    BT_C08_interp_G18, BT_C11_interp_G18, BT_C12_interp_G18, BT_C14_interp_G18, BT_C15_interp_G18, BT_C16_interp_G18
-	], axis=-1)
-	
-	mask = (
-	    (BT_mask[:, 0] > 0) & (BT_mask[:, 1] > 0) & (BT_mask[:, 2] > 0) & (BT_mask[:, 3] > 0) &
-	    (BT_mask[:, 4] > 0) & (BT_mask[:, 5] > 0) & (BT_mask[:, 6] > 0) & (BT_mask[:, 7] > 0) &
-	    (BT_mask[:, 8] > 0) & (BT_mask[:, 9] > 0) & (BT_mask[:, 10] > 0) & (BT_mask[:, 11] > 0) &
-	    (BT_mask[:, 0] < 1e03) & (BT_mask[:, 1] < 1e03) & (BT_mask[:, 2] < 1e03) & (BT_mask[:, 3] < 1e03) &
-	    (BT_mask[:, 4] < 1e03) & (BT_mask[:, 5] < 1e03) & (BT_mask[:, 6] < 1e03) & (BT_mask[:, 7] < 1e03) &
-	    (BT_mask[:, 8] < 1e03) & (BT_mask[:, 9] < 1e03) & (BT_mask[:, 10] < 1e03) & (BT_mask[:, 11] < 1e03) &
-	    ~np.isnan(BT_mask[:, 0]) & ~np.isnan(BT_mask[:, 1]) & ~np.isnan(BT_mask[:, 2]) & ~np.isnan(BT_mask[:, 3]) &
-	    ~np.isnan(BT_mask[:, 4]) & ~np.isnan(BT_mask[:, 5]) & ~np.isnan(BT_mask[:, 6]) & ~np.isnan(BT_mask[:, 7]) &
-	    ~np.isnan(BT_mask[:, 8]) & ~np.isnan(BT_mask[:, 9]) & ~np.isnan(BT_mask[:, 10]) & ~np.isnan(BT_mask[:, 11])
-	)
-	
-	BT_nozeros = BT[mask]
+		BT_C08_interp_G18 = BT_G18_block[:, :, 0].astype(np.float32, copy=False)
+		BT_C11_interp_G18 = BT_G18_block[:, :, 3].astype(np.float32, copy=False)
+		BT_C12_interp_G18 = BT_G18_block[:, :, 4].astype(np.float32, copy=False)
+		BT_C14_interp_G18 = BT_G18_block[:, :, 6].astype(np.float32, copy=False)
+		BT_C15_interp_G18 = BT_G18_block[:, :, 7].astype(np.float32, copy=False)
+		BT_C16_interp_G18 = BT_G18_block[:, :, 8].astype(np.float32, copy=False)
 
-	return BT, BT_nozeros, mask
+		BT_C08_av = (BT_C08_interp_G16 + BT_C08_interp_G18) / 2.0
+		BT_C11_av = (BT_C11_interp_G16 + BT_C11_interp_G18) / 2.0
+		BT_C12_av = (BT_C12_interp_G16 + BT_C12_interp_G18) / 2.0
+		BT_C14_av = (BT_C14_interp_G16 + BT_C14_interp_G18) / 2.0
+		BT_C15_av = (BT_C15_interp_G16 + BT_C15_interp_G18) / 2.0
+		BT_C16_av = (BT_C16_interp_G16 + BT_C16_interp_G18) / 2.0
+		BT_diff1 = BT_C14_av - BT_C11_av
+		BT_diff2 = BT_C14_av - BT_C15_av
+		BT_diff3 = BT_C14_av - BT_C08_av
+		BT_diff4 = BT_C14_av - BT_C16_av
+
+		BT_mask = np.stack([
+			BT_C08_interp_G16, BT_C11_interp_G16, BT_C12_interp_G16, BT_C14_interp_G16,
+			BT_C15_interp_G16, BT_C16_interp_G16, BT_C08_interp_G18, BT_C11_interp_G18,
+			BT_C12_interp_G18, BT_C14_interp_G18, BT_C15_interp_G18, BT_C16_interp_G18,
+		], axis=-1)
+
+		block_mask = (
+			(BT_mask[:, :, 0] > 0) & (BT_mask[:, :, 1] > 0) & (BT_mask[:, :, 2] > 0) & (BT_mask[:, :, 3] > 0) &
+			(BT_mask[:, :, 4] > 0) & (BT_mask[:, :, 5] > 0) & (BT_mask[:, :, 6] > 0) & (BT_mask[:, :, 7] > 0) &
+			(BT_mask[:, :, 8] > 0) & (BT_mask[:, :, 9] > 0) & (BT_mask[:, :, 10] > 0) & (BT_mask[:, :, 11] > 0) &
+			(BT_mask[:, :, 0] < 1e03) & (BT_mask[:, :, 1] < 1e03) & (BT_mask[:, :, 2] < 1e03) & (BT_mask[:, :, 3] < 1e03) &
+			(BT_mask[:, :, 4] < 1e03) & (BT_mask[:, :, 5] < 1e03) & (BT_mask[:, :, 6] < 1e03) & (BT_mask[:, :, 7] < 1e03) &
+			(BT_mask[:, :, 8] < 1e03) & (BT_mask[:, :, 9] < 1e03) & (BT_mask[:, :, 10] < 1e03) & (BT_mask[:, :, 11] < 1e03) &
+			~np.isnan(BT_mask[:, :, 0]) & ~np.isnan(BT_mask[:, :, 1]) & ~np.isnan(BT_mask[:, :, 2]) & ~np.isnan(BT_mask[:, :, 3]) &
+			~np.isnan(BT_mask[:, :, 4]) & ~np.isnan(BT_mask[:, :, 5]) & ~np.isnan(BT_mask[:, :, 6]) & ~np.isnan(BT_mask[:, :, 7]) &
+			~np.isnan(BT_mask[:, :, 8]) & ~np.isnan(BT_mask[:, :, 9]) & ~np.isnan(BT_mask[:, :, 10]) & ~np.isnan(BT_mask[:, :, 11])
+		)
+
+		if not np.any(block_mask):
+			continue
+
+		rows, cols = np.nonzero(block_mask)
+		global_rows = y0 + rows
+		global_cols = cols
+		flat_idx = global_rows * nx + global_cols
+
+		BT_chunk = np.stack([
+			BT_C08_av[block_mask], BT_C11_av[block_mask], BT_C12_av[block_mask], BT_C14_av[block_mask],
+			BT_C15_av[block_mask], BT_C16_av[block_mask], BT_diff1[block_mask], BT_diff2[block_mask],
+			BT_diff3[block_mask], BT_diff4[block_mask],
+		], axis=-1).astype(np.float32, copy=False)
+
+		flat_mask[global_rows, global_cols] = True
+		valid_features.append(BT_chunk)
+		valid_positions.append(flat_idx)
+
+	if not valid_features:
+		raise ValueError(f"No valid pixels found in {input_file}")
+
+	BT_nozeros = np.concatenate(valid_features, axis=0)
+	valid_flat = np.concatenate(valid_positions, axis=0)
+	return BT_nozeros, valid_flat, flat_mask
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
 	parser.add_argument("-f", "--input_file", type=str, default="data/preprocessed_files/abi_pix1000_step5.nc")
 	parser.add_argument("--model", type=str, default="data/models/gmm_pipeline_merged_res2km_10comp.joblib")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
+	parser.add_argument("--no-plot", action="store_true", help="Skip plotting during compute; generate plots offline with plot_scene_id.py")
 	args = parser.parse_args()
 	
 	input_file = args.input_file
@@ -101,7 +123,7 @@ if __name__ == '__main__':
 	lon_interp_grid = dataset['lon_interp_grid']
 
 	# Retrieve data
-	BT, BT_nozeros, mask = build_arrays(input_file)
+	BT_nozeros, valid_flat, mask = build_arrays(input_file)
 
 	# Retrieve model
 	pipeline = joblib.load(model)
@@ -112,9 +134,10 @@ if __name__ == '__main__':
 
 	labels_nozeros = pipeline.predict(BT_nozeros)
 	
-	# Map labels back to full grid
-	labels = np.full_like(BT[:, 0], fill_value=0, dtype=int)
-	labels[mask] = labels_nozeros
+	# Map labels back to full grid while keeping memory use bounded.
+	n_pixels = mask.size
+	labels = np.zeros(n_pixels, dtype=np.int16)
+	labels[valid_flat] = labels_nozeros
 
 	# -----------------------------
 	# Physically meaningful label ordering
@@ -126,39 +149,40 @@ if __name__ == '__main__':
 	
 	sort_idx = np.argsort(means_orig[:, 3])  # 2 == C14_G16
 	label_map = {orig: new for new, orig in enumerate(sort_idx)}
-	sorted_labels_nozeros = np.array([label_map[l] for l in labels_nozeros])
+	sorted_labels_nozeros = np.array([label_map[l] for l in labels_nozeros], dtype=np.int16)
 	
-	sorted_labels = np.full_like(BT[:, 0], fill_value=np.nan)
-	sorted_labels[mask] = sorted_labels_nozeros
+	sorted_labels = np.full(n_pixels, fill_value=np.nan, dtype=np.float32)
+	sorted_labels[valid_flat] = sorted_labels_nozeros
 	
 	scene_map = sorted_labels.reshape(lat_interp_grid.shape[0], lat_interp_grid.shape[1])
 	
 	# -----------------------------
-	# Plot
+	# Plot (optional; can be done offline)
 	# -----------------------------
-	lon_min = -153
-	lon_max = -59
-	cmap = mpl.cm.turbo
-	bounds = [i - 0.5 for i in range(n_components+1)]
-	norm = BoundaryNorm(bounds, cmap.N)
-	
-	fig, axs = plt.subplots(1, 1, figsize=(10, 8),
-	                        subplot_kw={'projection': ccrs.Sinusoidal(central_longitude=lambda_center)})
-	pc0 = axs.pcolormesh(lon_interp_grid, lat_interp_grid, scene_map, cmap=cmap, norm=norm, transform=ccrs.PlateCarree())
-	axs.set_global()
-	axs.coastlines()
-	axs.set_xlabel("G16 lza (°)")
-	axs.set_ylabel("G18 lza (°)")
-	cbar = fig.colorbar(pc0, ax=axs, orientation="vertical")
-	cbar.set_label("Scene ID")
-	ticks = [i for i in range(n_components)]
-	cbar.set_ticks(ticks)
-	fig.tight_layout()
-	
-	suffix = f"{day}_{res}_{int(n_components)}comp"
-	os.makedirs("figures/scene_id", exist_ok=True)
-	plt.savefig(f"figures/scene_id/scene_id_{suffix}.png", dpi=150)
-	plt.show()
+	if not args.no_plot:
+		lon_min = -153
+		lon_max = -59
+		cmap = mpl.cm.turbo
+		bounds = [i - 0.5 for i in range(n_components+1)]
+		norm = BoundaryNorm(bounds, cmap.N)
+		
+		fig, axs = plt.subplots(1, 1, figsize=(10, 8),
+		                        subplot_kw={'projection': ccrs.Sinusoidal(central_longitude=lambda_center)})
+		pc0 = axs.pcolormesh(lon_interp_grid, lat_interp_grid, scene_map, cmap=cmap, norm=norm, transform=ccrs.PlateCarree())
+		axs.set_global()
+		axs.coastlines()
+		axs.set_xlabel("G16 lza (°)")
+		axs.set_ylabel("G18 lza (°)")
+		cbar = fig.colorbar(pc0, ax=axs, orientation="vertical")
+		cbar.set_label("Scene ID")
+		ticks = [i for i in range(n_components)]
+		cbar.set_ticks(ticks)
+		fig.tight_layout()
+		
+		suffix = f"{day}_{res}_{int(n_components)}comp"
+		os.makedirs("figures/scene_id", exist_ok=True)
+		plt.savefig(f"figures/scene_id/scene_id_{suffix}.png", dpi=150)
+		plt.show()
 	
 	# -----------------------------
 	# Save outputs (labels + settings)

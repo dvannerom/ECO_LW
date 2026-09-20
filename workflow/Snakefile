@@ -72,7 +72,7 @@ rule classify_scene:
         lambda_center=float(config["lambda_center"])
     shell:
         "python scene_id_pca.py --input_file {input.data} "
-        "--model {input.model} --lambda_center {params.lambda_center}"
+        "--model {input.model} --lambda_center {params.lambda_center} --no-plot"
 
 
 rule fit_adm:
@@ -89,7 +89,7 @@ rule fit_adm:
         resolution=RESOLUTION
     shell:
         "mkdir -p data/.workflow && "
-        "python fit_ADM.py --day {wildcards.day} --resolution {params.resolution} && "
+        "python fit_ADM.py --day {wildcards.day} --resolution {params.resolution} --no-plot && "
         "touch data/.workflow/adm_{wildcards.day}_complete"
 
 
