@@ -12,6 +12,7 @@ import time
 import math
 import argparse
 import joblib
+from netcdf_io import load_data
 
 def heatmap(data, row_labels, col_labels, ax=None, cbar_kw=None, cbarlabel="", **kwargs):
 	"""
@@ -128,30 +129,30 @@ def build_arrays(input_file):
 	# -----------------------------
 	# Retrieve data
 	# -----------------------------
-	npzfile = np.load(input_file)
+	dataset = load_data(input_file)
 	#width = npzfile['arr_0']
 	#height = npzfile['arr_1']
-	width = npzfile['width']
-	height = npzfile['height']
-	lat_interp_grid = npzfile['lat_interp_grid']
-	lon_interp_grid = npzfile['lon_interp_grid']
-	
-	lza_interp_grid_G16 = np.cos(np.radians(npzfile['lza_G16_interp'])).flatten()
-	lza_interp_grid_G18 = np.cos(np.radians(npzfile['lza_G18_interp'])).flatten()
-	
-	BT_C08_interp_G16 = npzfile['BT_G16_interp'][::3, ::3, 0].flatten()
-	BT_C11_interp_G16 = npzfile['BT_G16_interp'][::3, ::3, 3].flatten()
-	BT_C12_interp_G16 = npzfile['BT_G16_interp'][::3, ::3, 4].flatten()
-	BT_C14_interp_G16 = npzfile['BT_G16_interp'][::3, ::3, 6].flatten()
-	BT_C15_interp_G16 = npzfile['BT_G16_interp'][::3, ::3, 7].flatten()
-	BT_C16_interp_G16 = npzfile['BT_G16_interp'][::3, ::3, 8].flatten()
-	
-	BT_C08_interp_G18 = npzfile['BT_G18_interp'][::3, ::3, 0].flatten()
-	BT_C11_interp_G18 = npzfile['BT_G18_interp'][::3, ::3, 3].flatten()
-	BT_C12_interp_G18 = npzfile['BT_G18_interp'][::3, ::3, 4].flatten()
-	BT_C14_interp_G18 = npzfile['BT_G18_interp'][::3, ::3, 6].flatten()
-	BT_C15_interp_G18 = npzfile['BT_G18_interp'][::3, ::3, 7].flatten()
-	BT_C16_interp_G18 = npzfile['BT_G18_interp'][::3, ::3, 8].flatten()
+	width = dataset['width']
+	height = dataset['height']
+	lat_interp_grid = dataset['lat_interp_grid']
+	lon_interp_grid = dataset['lon_interp_grid']
+
+	lza_interp_grid_G16 = np.cos(np.radians(dataset['lza_G16_interp'])).flatten()
+	lza_interp_grid_G18 = np.cos(np.radians(dataset['lza_G18_interp'])).flatten()
+
+	BT_C08_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 0].flatten()
+	BT_C11_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 3].flatten()
+	BT_C12_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 4].flatten()
+	BT_C14_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 6].flatten()
+	BT_C15_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 7].flatten()
+	BT_C16_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 8].flatten()
+
+	BT_C08_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 0].flatten()
+	BT_C11_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 3].flatten()
+	BT_C12_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 4].flatten()
+	BT_C14_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 6].flatten()
+	BT_C15_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 7].flatten()
+	BT_C16_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 8].flatten()
 
 	# Define averages
 	BT_C08_av = (BT_C08_interp_G16 + BT_C08_interp_G18)/2
@@ -197,7 +198,7 @@ def build_arrays(input_file):
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
-	parser.add_argument("-f", "--input_file", type=str, nargs="+", default="data/preprocessed_files/abi_pix1000_step5.npz")
+	parser.add_argument("-f", "--input_file", type=str, nargs="+", default="data/preprocessed_files/abi_pix1000_step5.nc")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	parser.add_argument("-n", "--n_components", type=int, default=10, help="Number of GMM components")
 	parser.add_argument("--use_pca", action="store_true", help="Enable PCA before GMM")

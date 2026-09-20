@@ -9,23 +9,23 @@ TRAINING_FILES = config["training_files"]
 
 
 def preprocessed(day):
-    return f"data/preprocessed_files/abi_{day}_res{RESOLUTION}km_step{STEP}.npz"
+    return f"data/preprocessed_files/abi_{day}_res{RESOLUTION}km_step{STEP}.nc"
 
 
 def scene_id(day):
-    return f"data/scene_id/scene_id_{day}_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.npz"
+    return f"data/scene_id/scene_id_{day}_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.nc"
 
 
 def adm(day, channel, scene):
-    return f"data/ADM/ADM_{day}_res{RESOLUTION}km_C{channel}_scene{scene}.npz"
+    return f"data/ADM/ADM_{day}_res{RESOLUTION}km_C{channel}_scene{scene}.nc"
 
 
 def narrowband(day, channel):
-    return f"data/narrowband_flux/narrowband_flux_{day}_res{RESOLUTION}km_C{channel}.npz"
+    return f"data/narrowband_flux/narrowband_flux_{day}_res{RESOLUTION}km_C{channel}.nc"
 
 
 def broadband(day):
-    return f"data/broadband_flux/broadband_flux_{day}_res{RESOLUTION}km.npz"
+    return f"data/broadband_flux/broadband_flux_{day}_res{RESOLUTION}km.nc"
 
 
 BROADBAND_OUTPUTS = [broadband(day) for day in DAYS]
@@ -51,7 +51,7 @@ rule train_scene_model:
 
 rule preprocess:
     output:
-        "data/preprocessed_files/abi_{day}_res" + str(RESOLUTION) + "km_step" + str(STEP) + ".npz"
+        "data/preprocessed_files/abi_{day}_res" + str(RESOLUTION) + "km_step" + str(STEP) + ".nc"
     params:
         step=STEP,
         resolution=RESOLUTION,
@@ -67,7 +67,7 @@ rule classify_scene:
         data=lambda wildcards: preprocessed(wildcards.day),
         model=MODEL
     output:
-        "data/scene_id/scene_id_{day}_res" + str(RESOLUTION) + "km_" + str(SCENE_COMPONENTS) + "comp.npz"
+        "data/scene_id/scene_id_{day}_res" + str(RESOLUTION) + "km_" + str(SCENE_COMPONENTS) + "comp.nc"
     params:
         lambda_center=float(config["lambda_center"])
     shell:
@@ -81,7 +81,7 @@ rule fit_adm:
         scene=lambda wildcards: scene_id(wildcards.day)
     output:
         adms=expand(
-            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.npz",
+            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.nc",
             channel=range(6),
             scene=range(SCENE_COMPONENTS),
         )
@@ -98,13 +98,13 @@ rule radiance_to_flux:
         data=lambda wildcards: preprocessed(wildcards.day),
         scene=lambda wildcards: scene_id(wildcards.day),
         adm=expand(
-            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.npz",
+            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.nc",
             channel=range(6),
             scene=range(SCENE_COMPONENTS),
         )
     output:
         narrowbands=expand(
-            "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.npz",
+            "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.nc",
             channel=range(6),
         )
     params:
@@ -121,11 +121,11 @@ rule narrowband_to_broadband:
     input:
         data=lambda wildcards: preprocessed(wildcards.day),
         narrowbands=expand(
-            "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.npz",
+            "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.nc",
             channel=range(6),
         )
     output:
-        "data/broadband_flux/broadband_flux_{day}_res" + str(RESOLUTION) + "km.npz"
+        "data/broadband_flux/broadband_flux_{day}_res" + str(RESOLUTION) + "km.nc"
     params:
         resolution=RESOLUTION,
         lambda_center=float(config["lambda_center"])

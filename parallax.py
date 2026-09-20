@@ -1,4 +1,5 @@
 import numpy as np
+from netcdf_io import load_data
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -23,14 +24,14 @@ if __name__ == '__main__':
 	lambda_center = args.lambda_center
 
 	# Retrieve data
-	npzfile = np.load(input_file,allow_pickle=True)
-	lat_interp_grid = npzfile['lat_interp_grid']
-	lon_interp_grid = npzfile['lon_interp_grid']
+	dataset = load_data(input_file)
+	lat_interp_grid = dataset['lat_interp_grid']
+	lon_interp_grid = dataset['lon_interp_grid']
 	lon_new = to_minus180_180(lon_interp_grid.copy())
-	rad_C14_interp_G16 = npzfile['rad_G16_interp'][:,:,2]
-	rad_C14_interp_G16_corr = npzfile['rad_G16_interp_corr'][:,:,2]
-	rad_C14_interp_G18 = npzfile['rad_G18_interp'][:,:,2]
-	rad_C14_interp_G18_corr = npzfile['rad_G18_interp_corr'][:,:,2]
+	rad_C14_interp_G16 = dataset['rad_G16_interp'][:,:,2]
+	rad_C14_interp_G16_corr = dataset['rad_G16_interp_corr'][:,:,2]
+	rad_C14_interp_G18 = dataset['rad_G18_interp'][:,:,2]
+	rad_C14_interp_G18_corr = dataset['rad_G18_interp_corr'][:,:,2]
 
 	# Mask NaNs
 	#rad_C14_interp_G16 = rad_C14_interp_G16[~np.isnan(rad_C14_interp_G16)]

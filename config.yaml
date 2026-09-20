@@ -34,9 +34,9 @@ scene_components: 10
 
 # Files used to train the scene classifier. Add more representative days as needed.
 training_files:
-  - data/preprocessed_files/abi_245_res2km_step1.npz
+  - data/preprocessed_files/abi_245_res2km_step1.nc
 
 model: data/models/gmm_pipeline_merged_res2km_10comp.joblib
 output:
   root: data
-  monthly: data/monthly/monthly_flux_res2km.npz
+  monthly: data/monthly/monthly_flux_res2km.nc

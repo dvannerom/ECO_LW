@@ -1,6 +1,7 @@
 import numpy as np
 import argparse
 import os
+from netcdf_io import load_data, write_dataset
 
 if __name__ == '__main__':
     
@@ -49,9 +50,9 @@ if __name__ == '__main__':
 	count_diff = None
 	
 	for input_file in input_files:
-		with np.load(input_file) as npzfile:
-			flux_G16_tmp = npzfile["arr_0"]
-			flux_G18_tmp = npzfile["arr_1"]
+		dataset = load_data(input_file)
+		flux_G16_tmp = dataset["flux_G16"]
+		flux_G18_tmp = dataset["flux_G18"]
 			
 		if sum_G16 is None:
 			shape = flux_G16_tmp.shape
@@ -118,14 +119,15 @@ if __name__ == '__main__':
 	#print(np.nanstd(diff.flatten()/flux_G18_monthly.flatten()))
 	#diff = np.nanstd(flux_G16_stacked-flux_G18_stacked, axis=0)
 
+	reference = load_data(reference_data)
+	lat_interp_grid = reference["lat_interp_grid"]
+	lon_interp_grid = reference["lon_interp_grid"]
+
 	if not no_plot:
 		import matplotlib.pyplot as plt
 		import cartopy.crs as ccrs
 
 		# Draw labels on original map
-		npzfile = np.load(reference_data)
-		lat_interp_grid = npzfile['lat_interp_grid']
-		lon_interp_grid = npzfile['lon_interp_grid']
 		min_flux = 150
 		max_flux = 350
 		max_diff = 25
@@ -155,4 +157,21 @@ if __name__ == '__main__':
 		plt.savefig("figures/broadband_flux_monthly_res"+str(res)+"km.png")
 
 	os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
-	np.savez(output_file, flux_G16_monthly, flux_G18_monthly, diff)
+	write_dataset(
+		output_file,
+		{
+			"flux_G16_monthly": flux_G16_monthly,
+			"flux_G18_monthly": flux_G18_monthly,
+			"std_diff": diff,
+			"lat": lat_interp_grid,
+			"lon": lon_interp_grid,
+		},
+		{
+			"flux_G16_monthly": ("y", "x"),
+			"flux_G18_monthly": ("y", "x"),
+			"std_diff": ("y", "x"),
+			"lat": ("y", "x"),
+			"lon": ("y", "x"),
+		},
+		attrs={"product": "ECO monthly broadband flux statistics"},
+	)

@@ -11,6 +11,7 @@ import math
 from tqdm import tqdm
 from tqdm_joblib import tqdm_joblib
 import argparse
+from netcdf_io import load_data
 
 def evaluate_gmm(X, n_components):
 	gmm = GaussianMixture(n_components=n_components, n_init=5, random_state=42)
@@ -42,7 +43,7 @@ def evaluate_gmm(X, n_components):
 if __name__ == '__main__':
     
 	parser = argparse.ArgumentParser(description="sample argument parser")
-	parser.add_argument("-f","--input_file", type=str, default="data/preprocessed_files/abi_pix1000_step5.npz")
+	parser.add_argument("-f","--input_file", type=str, default="data/preprocessed_files/abi_pix1000_step5.nc")
 	parser.add_argument("--use_pca", action="store_true", help="Enable PCA before GMM")
 	parser.add_argument("--pca_var", type=float, default=0.95, help="Cumulative variance to keep (e.g., 0.98)")
 	args = parser.parse_args()
@@ -55,21 +56,21 @@ if __name__ == '__main__':
 	res = input_file.split("/")[-1].split(".")[0].split("_")[2]
 
 	# Retrieve data
-	npzfile = np.load(input_file)
-	lza_interp_grid_G16 = np.cos(np.radians(npzfile['lza_G16_interp'])).flatten()
-	lza_interp_grid_G18 = np.cos(np.radians(npzfile['lza_G18_interp'])).flatten()
-	BT_C08_interp_G16 = npzfile['BT_G16_interp'][:,:,0].flatten() 
-	BT_C11_interp_G16 = npzfile['BT_G16_interp'][:,:,3].flatten() 
-	BT_C12_interp_G16 = npzfile['BT_G16_interp'][:,:,4].flatten() 
-	BT_C14_interp_G16 = npzfile['BT_G16_interp'][:,:,6].flatten()
-	BT_C15_interp_G16 = npzfile['BT_G16_interp'][:,:,7].flatten()
-	BT_C16_interp_G16 = npzfile['BT_G16_interp'][:,:,8].flatten()
-	BT_C08_interp_G18 = npzfile['BT_G18_interp'][:,:,0].flatten() 
-	BT_C11_interp_G18 = npzfile['BT_G18_interp'][:,:,3].flatten() 
-	BT_C12_interp_G18 = npzfile['BT_G18_interp'][:,:,4].flatten() 
-	BT_C14_interp_G18 = npzfile['BT_G18_interp'][:,:,6].flatten()
-	BT_C15_interp_G18 = npzfile['BT_G18_interp'][:,:,7].flatten()
-	BT_C16_interp_G18 = npzfile['BT_G18_interp'][:,:,8].flatten()
+	dataset = load_data(input_file)
+	lza_interp_grid_G16 = np.cos(np.radians(dataset['lza_G16_interp'])).flatten()
+	lza_interp_grid_G18 = np.cos(np.radians(dataset['lza_G18_interp'])).flatten()
+	BT_C08_interp_G16 = dataset['BT_G16_interp'][:,:,0].flatten()
+	BT_C11_interp_G16 = dataset['BT_G16_interp'][:,:,3].flatten()
+	BT_C12_interp_G16 = dataset['BT_G16_interp'][:,:,4].flatten()
+	BT_C14_interp_G16 = dataset['BT_G16_interp'][:,:,6].flatten()
+	BT_C15_interp_G16 = dataset['BT_G16_interp'][:,:,7].flatten()
+	BT_C16_interp_G16 = dataset['BT_G16_interp'][:,:,8].flatten()
+	BT_C08_interp_G18 = dataset['BT_G18_interp'][:,:,0].flatten()
+	BT_C11_interp_G18 = dataset['BT_G18_interp'][:,:,3].flatten()
+	BT_C12_interp_G18 = dataset['BT_G18_interp'][:,:,4].flatten()
+	BT_C14_interp_G18 = dataset['BT_G18_interp'][:,:,6].flatten()
+	BT_C15_interp_G18 = dataset['BT_G18_interp'][:,:,7].flatten()
+	BT_C16_interp_G18 = dataset['BT_G18_interp'][:,:,8].flatten()
 
 	# Define averages
 	BT_C08_av = (BT_C08_interp_G16 + BT_C08_interp_G18)/2

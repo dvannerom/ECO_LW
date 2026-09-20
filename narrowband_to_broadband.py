@@ -5,6 +5,7 @@ import argparse
 from sklearn.preprocessing import PolynomialFeatures
 import psutil
 import os
+from netcdf_io import load_data, write_dataset
 
 def rad_to_T(rad,planck_fk1,planck_fk2,planck_bc1,planck_bc2):
 	ratio = planck_fk1/rad
@@ -69,10 +70,10 @@ if __name__ == '__main__':
 
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
-	npzfile = np.load("data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.npz")
-	shape_x, shape_y = npzfile['lat_interp_grid'].shape[0], npzfile['lat_interp_grid'].shape[1]
-	lat_interp_grid = npzfile['lat_interp_grid']
-	lon_interp_grid = npzfile['lon_interp_grid']
+	preprocessed_data = load_data("data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc")
+	shape_x, shape_y = preprocessed_data['lat_interp_grid'].shape[0], preprocessed_data['lat_interp_grid'].shape[1]
+	lat_interp_grid = preprocessed_data['lat_interp_grid']
+	lon_interp_grid = preprocessed_data['lon_interp_grid']
 	#lza_interp_grid_G16 = npzfile['lza_G16_interp_corr']
 	#lza_interp_grid_G18 = npzfile['lza_G18_interp_corr']
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
@@ -106,11 +107,9 @@ if __name__ == '__main__':
 	rad_G18 = []
 	
 	for ch in range(6):
-		with np.load(
-		    f"data/narrowband_flux/narrowband_flux_{day}_res{res}km_C{ch}.npz"
-		) as f:
-		    rad_G16.append(f["arr_0"].astype(np.float32))
-		    rad_G18.append(f["arr_1"].astype(np.float32))
+		f = load_data(f"data/narrowband_flux/narrowband_flux_{day}_res{res}km_C{ch}.nc")
+		rad_G16.append(f["BT_G16"].ravel().astype(np.float32))
+		rad_G18.append(f["BT_G18"].ravel().astype(np.float32))
 	
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 	rad_G16 = np.stack(rad_G16, axis=1)
@@ -316,4 +315,19 @@ if __name__ == '__main__':
 	#plt.savefig("figures/broadband_flux_"+str(day)+"_res"+str(res)+"km.png")
 	#plt.close()
 
-	np.savez("data/broadband_flux/broadband_flux_"+str(day)+"_res"+str(res)+"km",flux_G16,flux_G18)
+	write_dataset(
+		"data/broadband_flux/broadband_flux_"+str(day)+"_res"+str(res)+"km.nc",
+		{
+			"flux_G16": flux_G16,
+			"flux_G18": flux_G18,
+			"lat": lat_interp_grid,
+			"lon": lon_interp_grid,
+		},
+		{
+			"flux_G16": ("y", "x"),
+			"flux_G18": ("y", "x"),
+			"lat": ("y", "x"),
+			"lon": ("y", "x"),
+		},
+		attrs={"product": "ECO daily broadband flux"},
+	)

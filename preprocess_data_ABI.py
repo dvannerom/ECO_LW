@@ -7,6 +7,7 @@ import argparse
 import os
 from pathlib import Path
 from utils import *
+from netcdf_io import write_preprocessed
 from scipy.interpolate import griddata, RegularGridInterpolator
 from pyresample import geometry, kd_tree
 import pyproj
@@ -393,15 +394,19 @@ if __name__ == '__main__':
 	BT_G18_interp_corr = kd_tree.resample_nearest(G18_corr_grid,BT_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
 	print("Interpolation of G18 data from parallax-corrected lat-lon grid done")
 
-	np.savez("data/preprocessed_files/abi_"+day+"_res"+str(int(res_km))+"km_step"+str(step),
-             width=width,height=height,step=step,
-             planck_G16=planck_G16,planck_G18=planck_G18,
-             lat_interp_grid=lat_interp_grid,lon_interp_grid=lon_interp_grid,
-             lza_G16_interp=lza_G16_interp,lza_G18_interp=lza_G18_interp,
-             rad_G16_interp=rad_G16_interp,rad_G18_interp=rad_G18_interp,
-             BT_G16_interp=BT_G16_interp,BT_G18_interp=BT_G18_interp,
-             CTH_G16_interp=CTH_G16_interp,CTH_G18_interp=CTH_G18_interp,
-             lza_G16_interp_corr=lza_G16_interp_corr,lza_G18_interp_corr=lza_G18_interp_corr,
-             rad_G16_interp_corr=rad_G16_interp_corr,rad_G18_interp_corr=rad_G18_interp_corr,
-             BT_G16_interp_corr=BT_G16_interp_corr,BT_G18_interp_corr=BT_G18_interp_corr,
-             CTH_G16_interp_corr=CTH_G16_interp_corr,CTH_G18_interp_corr=CTH_G18_interp_corr)
+	write_preprocessed(
+		"data/preprocessed_files/abi_"+day+"_res"+str(int(res_km))+"km_step"+str(step)+".nc",
+		{
+			"width": width, "height": height, "step": step,
+			"planck_G16": planck_G16, "planck_G18": planck_G18,
+			"lat_interp_grid": lat_interp_grid, "lon_interp_grid": lon_interp_grid,
+			"lza_G16_interp": lza_G16_interp, "lza_G18_interp": lza_G18_interp,
+			"rad_G16_interp": rad_G16_interp, "rad_G18_interp": rad_G18_interp,
+			"BT_G16_interp": BT_G16_interp, "BT_G18_interp": BT_G18_interp,
+			"CTH_G16_interp": CTH_G16_interp, "CTH_G18_interp": CTH_G18_interp,
+			"lza_G16_interp_corr": lza_G16_interp_corr, "lza_G18_interp_corr": lza_G18_interp_corr,
+			"rad_G16_interp_corr": rad_G16_interp_corr, "rad_G18_interp_corr": rad_G18_interp_corr,
+			"BT_G16_interp_corr": BT_G16_interp_corr, "BT_G18_interp_corr": BT_G18_interp_corr,
+			"CTH_G16_interp_corr": CTH_G16_interp_corr, "CTH_G18_interp_corr": CTH_G18_interp_corr,
+		}
+	)

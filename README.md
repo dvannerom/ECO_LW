@@ -43,6 +43,14 @@ products before running the production days, then set `model` in `config.yaml`
 to the approved model artifact. Monthly aggregation uses streaming sums and
 Welford statistics, so it does not stack all daily scenes in memory.
 
-The workflow currently preserves the existing NumPy/NPZ numerical interfaces.
-The next storage migration should replace the large intermediate NPZ files with
-chunked Zarr or HDF5 products while keeping the same stage boundaries.
+Production intermediates use structured NetCDF4 files with named variables,
+dimensions, units-ready metadata, and a self-describing layout. The numerical
+stages still operate on NumPy arrays after loading a product, so this migration
+changes the storage contract without changing the scientific calculations.
+Products are written with lightweight NetCDF4 compression; the tradeoff is a
+small amount of CPU during I/O in exchange for lower storage use and clearer
+metadata.
+
+Every spatial product stores `lat(y, x)` and `lon(y, x)` grids next to its data
+variables. The `y` and `x` dimensions identify array rows and columns; the
+latitude and longitude grids provide the geographic location for each pixel.

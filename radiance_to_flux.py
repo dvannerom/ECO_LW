@@ -8,6 +8,7 @@ import argparse
 import psutil
 import os
 import gc
+from netcdf_io import load_data, write_dataset
 
 def index_to_channel(index):
 	if index==0: return 0
@@ -51,32 +52,32 @@ if __name__ == '__main__':
 	#channel = args.channel
 	lambda_center = args.lambda_center
 
-	radiance_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.npz"
-	scene_file = "data/scene_id/scene_id_"+str(day)+"_res"+str(res)+"km_10comp.npz"
+	radiance_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc"
+	scene_file = "data/scene_id/scene_id_"+str(day)+"_res"+str(res)+"km_10comp.nc"
 
 	# Retrieve radiances
-	npzfile = np.load(radiance_file)
+	radiance_data = load_data(radiance_file)
 	print(
 	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 	    "GB"
 	)
-	lat_interp_grid = npzfile['lat_interp_grid']
-	lon_interp_grid = npzfile['lon_interp_grid']
-	shape_x, shape_y = npzfile['lat_interp_grid'].shape[0], npzfile['lat_interp_grid'].shape[1]
+	lat_interp_grid = radiance_data['lat_interp_grid']
+	lon_interp_grid = radiance_data['lon_interp_grid']
+	shape_x, shape_y = radiance_data['lat_interp_grid'].shape[0], radiance_data['lat_interp_grid'].shape[1]
 	print(
 	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 	    "GB"
 	)
-	lza_interp_grid_G16 = npzfile['lza_G16_interp_corr'].ravel()
-	lza_interp_grid_G18 = npzfile['lza_G18_interp_corr'].ravel()
+	lza_interp_grid_G16 = radiance_data['lza_G16_interp_corr'].ravel()
+	lza_interp_grid_G18 = radiance_data['lza_G18_interp_corr'].ravel()
 	print(
 	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 	    "GB"
 	)
 
 	# Retrieve scene labels
-	npzfile_scene = np.load(scene_file)
-	labels = npzfile_scene['labels']
+	scene_data = load_data(scene_file)
+	labels = scene_data['labels']
 	print(
 	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 	    "GB"
@@ -85,14 +86,14 @@ if __name__ == '__main__':
 	for channel in range(6):
 		print("Channel "+str(channel))
 		index_channel = index_to_channel(channel)
-		planck_G16 = npzfile['planck_G16'][index_channel,:]
-		planck_G18 = npzfile['planck_G18'][index_channel,:]
+		planck_G16 = radiance_data['planck_G16'][index_channel,:]
+		planck_G18 = radiance_data['planck_G18'][index_channel,:]
 		print(
 		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 		    "GB"
 		)
-		rad_interp_G16 = npzfile['rad_G16_interp_corr'][:,:,index_channel].ravel()
-		rad_interp_G18 = npzfile['rad_G18_interp_corr'][:,:,index_channel].ravel()
+		rad_interp_G16 = radiance_data['rad_G16_interp_corr'][:,:,index_channel].ravel()
+		rad_interp_G18 = radiance_data['rad_G18_interp_corr'][:,:,index_channel].ravel()
 		print(
 		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 		    "GB"
@@ -103,12 +104,12 @@ if __name__ == '__main__':
 		norm_scene = []
 		
 		for scene in range(10):
-			adm = np.load(
-			    f"data/ADM/ADM_{day}_res{res}km_C{channel}_scene{scene}.npz"
+			adm = load_data(
+			    f"data/ADM/ADM_{day}_res{res}km_C{channel}_scene{scene}.nc"
 			)
 			
-			b_scene.append(adm["arr_0"])
-			norm_scene.append(adm["arr_1"])
+			b_scene.append(adm["b"])
+			norm_scene.append(adm["norm"])
 		print(
 		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
 		    "GB"
@@ -242,8 +243,22 @@ if __name__ == '__main__':
 		#    "GB"
 		#)
 
-		#np.savez("data/narrowband_flux_CH"+str(channel),np.pi*rad_interp_G16_corr,np.pi*rad_interp_G18_corr)
-		np.savez("data/narrowband_flux/narrowband_flux_"+str(day)+"_res"+str(res)+"km_C"+str(channel),BT_G16,BT_G18)
+		write_dataset(
+			"data/narrowband_flux/narrowband_flux_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+".nc",
+			{
+				"BT_G16": BT_G16.reshape(shape_x, shape_y),
+				"BT_G18": BT_G18.reshape(shape_x, shape_y),
+				"lat": lat_interp_grid,
+				"lon": lon_interp_grid,
+			},
+			{
+				"BT_G16": ("y", "x"),
+				"BT_G18": ("y", "x"),
+				"lat": ("y", "x"),
+				"lon": ("y", "x"),
+			},
+			attrs={"product": "ECO narrowband brightness temperature flux input", "channel": channel},
+		)
 
 		del planck_G16
 		del planck_G18

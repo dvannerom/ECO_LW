@@ -12,35 +12,36 @@ import time
 import math
 import argparse
 import joblib
+from netcdf_io import load_data, write_dataset
 
 def build_arrays(input_file):
 	# -----------------------------
 	# Retrieve data
 	# -----------------------------
-	npzfile = np.load(input_file)
+	dataset = load_data(input_file)
 	#width = npzfile['arr_0']
 	#height = npzfile['arr_1']
-	width = npzfile['width']
-	height = npzfile['height']
-	lat_interp_grid = npzfile['lat_interp_grid']
-	lon_interp_grid = npzfile['lon_interp_grid']
-	
-	lza_interp_grid_G16 = np.cos(np.radians(npzfile['lza_G16_interp'])).flatten()
-	lza_interp_grid_G18 = np.cos(np.radians(npzfile['lza_G18_interp'])).flatten()
-	
-	BT_C08_interp_G16 = npzfile['BT_G16_interp'][:, :, 0].flatten()
-	BT_C11_interp_G16 = npzfile['BT_G16_interp'][:, :, 3].flatten()
-	BT_C12_interp_G16 = npzfile['BT_G16_interp'][:, :, 4].flatten()
-	BT_C14_interp_G16 = npzfile['BT_G16_interp'][:, :, 6].flatten()
-	BT_C15_interp_G16 = npzfile['BT_G16_interp'][:, :, 7].flatten()
-	BT_C16_interp_G16 = npzfile['BT_G16_interp'][:, :, 8].flatten()
-	
-	BT_C08_interp_G18 = npzfile['BT_G18_interp'][:, :, 0].flatten()
-	BT_C11_interp_G18 = npzfile['BT_G18_interp'][:, :, 3].flatten()
-	BT_C12_interp_G18 = npzfile['BT_G18_interp'][:, :, 4].flatten()
-	BT_C14_interp_G18 = npzfile['BT_G18_interp'][:, :, 6].flatten()
-	BT_C15_interp_G18 = npzfile['BT_G18_interp'][:, :, 7].flatten()
-	BT_C16_interp_G18 = npzfile['BT_G18_interp'][:, :, 8].flatten()
+	width = dataset['width']
+	height = dataset['height']
+	lat_interp_grid = dataset['lat_interp_grid']
+	lon_interp_grid = dataset['lon_interp_grid']
+
+	lza_interp_grid_G16 = np.cos(np.radians(dataset['lza_G16_interp'])).flatten()
+	lza_interp_grid_G18 = np.cos(np.radians(dataset['lza_G18_interp'])).flatten()
+
+	BT_C08_interp_G16 = dataset['BT_G16_interp'][:, :, 0].flatten()
+	BT_C11_interp_G16 = dataset['BT_G16_interp'][:, :, 3].flatten()
+	BT_C12_interp_G16 = dataset['BT_G16_interp'][:, :, 4].flatten()
+	BT_C14_interp_G16 = dataset['BT_G16_interp'][:, :, 6].flatten()
+	BT_C15_interp_G16 = dataset['BT_G16_interp'][:, :, 7].flatten()
+	BT_C16_interp_G16 = dataset['BT_G16_interp'][:, :, 8].flatten()
+
+	BT_C08_interp_G18 = dataset['BT_G18_interp'][:, :, 0].flatten()
+	BT_C11_interp_G18 = dataset['BT_G18_interp'][:, :, 3].flatten()
+	BT_C12_interp_G18 = dataset['BT_G18_interp'][:, :, 4].flatten()
+	BT_C14_interp_G18 = dataset['BT_G18_interp'][:, :, 6].flatten()
+	BT_C15_interp_G18 = dataset['BT_G18_interp'][:, :, 7].flatten()
+	BT_C16_interp_G18 = dataset['BT_G18_interp'][:, :, 8].flatten()
 
 	# Define averages
 	BT_C08_av = (BT_C08_interp_G16 + BT_C08_interp_G18)/2
@@ -83,7 +84,7 @@ def build_arrays(input_file):
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
-	parser.add_argument("-f", "--input_file", type=str, default="data/preprocessed_files/abi_pix1000_step5.npz")
+	parser.add_argument("-f", "--input_file", type=str, default="data/preprocessed_files/abi_pix1000_step5.nc")
 	parser.add_argument("--model", type=str, default="data/models/gmm_pipeline_merged_res2km_10comp.joblib")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	args = parser.parse_args()
@@ -95,9 +96,9 @@ if __name__ == '__main__':
 	day = input_file.split("/")[-1].split(".")[0].split("_")[1]
 	res = input_file.split("/")[-1].split(".")[0].split("_")[2]
 		
-	npzfile = np.load(input_file)
-	lat_interp_grid = npzfile['lat_interp_grid']
-	lon_interp_grid = npzfile['lon_interp_grid']
+	dataset = load_data(input_file)
+	lat_interp_grid = dataset['lat_interp_grid']
+	lon_interp_grid = dataset['lon_interp_grid']
 
 	# Retrieve data
 	BT, BT_nozeros, mask = build_arrays(input_file)
@@ -162,8 +163,22 @@ if __name__ == '__main__':
 	# -----------------------------
 	# Save outputs (labels + settings)
 	# -----------------------------
-	out_npz_path = f"data/scene_id/scene_id_{suffix}.npz"
-	np.savez(out_npz_path,
-	         labels=labels,
-	         labels_nozeros=labels_nozeros,
-	         sorted_labels=sorted_labels)
+	out_path = f"data/scene_id/scene_id_{suffix}.nc"
+	write_dataset(
+		out_path,
+		{
+			"labels": labels,
+			"labels_nozeros": labels_nozeros,
+			"sorted_labels": sorted_labels,
+			"lat": lat_interp_grid,
+			"lon": lon_interp_grid,
+		},
+		{
+			"labels": ("pixel",),
+			"labels_nozeros": ("valid_pixel",),
+			"sorted_labels": ("pixel",),
+			"lat": ("y", "x"),
+			"lon": ("y", "x"),
+		},
+		attrs={"product": "ECO scene identification", "n_components": int(n_components)},
+	)

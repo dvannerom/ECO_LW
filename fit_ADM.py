@@ -7,6 +7,7 @@ import math
 import argparse
 import psutil
 import os
+from netcdf_io import load_data, write_dataset
 
 mpl.rcParams["mathtext.default"] = 'regular'
 
@@ -69,15 +70,15 @@ if __name__ == '__main__':
 	#channel = args.channel
 	#scene = args.scene
 
-	data_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.npz"
-	scene_file = "data/scene_id/scene_id_"+str(day)+"_res"+str(res)+"km_10comp.npz"
+	data_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc"
+	scene_file = "data/scene_id/scene_id_"+str(day)+"_res"+str(res)+"km_10comp.nc"
 
 	#res = data_file.split("/")[-1].split(".")[0].split("_")[1]
 
 	# Retrieve data
-	npz_datafile = np.load(data_file)
-	rad_G16 = npz_datafile['rad_G16_interp_corr'][:,:,[0,3,4,6,7,8]]
-	rad_G18 = npz_datafile['rad_G18_interp_corr'][:,:,[0,3,4,6,7,8]]
+	preprocessed_data = load_data(data_file)
+	rad_G16 = preprocessed_data['rad_G16_interp_corr'][:,:,[0,3,4,6,7,8]]
+	rad_G18 = preprocessed_data['rad_G18_interp_corr'][:,:,[0,3,4,6,7,8]]
 	#BT_G16 = npz_datafile['BT_G16_interp_corr'][:,:,[0,3,4,6,7,8]]
 	#BT_G18 = npz_datafile['BT_G18_interp_corr'][:,:,[0,3,4,6,7,8]]
 	for name, arr in [                                   
@@ -147,12 +148,12 @@ if __name__ == '__main__':
 			print("Channel "+str(channel)+", scene "+str(scene))
 			rad_G16 = rad_G16_flat[:,channel][mask_rad]#[mask & mask_rad] 
 			rad_G18 = rad_G18_flat[:,channel][mask_rad]#[mask & mask_rad]
-			lza_G16 = npz_datafile['lza_G16_interp_corr'].ravel()[mask_rad]#[mask & mask_rad] 
-			lza_G18 = npz_datafile['lza_G18_interp_corr'].ravel()[mask_rad]#[mask & mask_rad]
+			lza_G16 = preprocessed_data['lza_G16_interp_corr'].ravel()[mask_rad]#[mask & mask_rad]
+			lza_G18 = preprocessed_data['lza_G18_interp_corr'].ravel()[mask_rad]#[mask & mask_rad]
 
 			# Retrieve scene labels
-			npz_scenefile = np.load(scene_file)
-			labels = npz_scenefile['labels'][mask_rad]#[mask & mask_rad]
+			scene_data = load_data(scene_file)
+			labels = scene_data['labels'][mask_rad]#[mask & mask_rad]
 			#npzfile_G16 = np.load(file_G16)
 			#rad_G16 = npzfile_G16['arr_0'][:,channel]
 			#TIR_G16 = npzfile_G16['arr_1'][:,channel]
@@ -252,4 +253,9 @@ if __name__ == '__main__':
 			plt.show()
 
 			# Save uncorrected and corrected radiances
-			np.savez("data/ADM/ADM_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+"_scene"+str(scene),popt[0],norm_ADM)
+			write_dataset(
+				"data/ADM/ADM_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+"_scene"+str(scene)+".nc",
+				{"b": popt[0], "norm": norm_ADM},
+				{"b": (), "norm": ()},
+				attrs={"product": "ECO angular distribution model", "channel": channel, "scene": scene},
+			)
