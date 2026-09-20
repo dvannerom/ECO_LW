@@ -12,5 +12,6 @@ logs/
 
 __pycache__/
 *.pyc
+.snakemake/
 
 .vscode/

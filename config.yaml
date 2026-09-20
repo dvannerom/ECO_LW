@@ -1,0 +1,42 @@
+# Configuration for the ECO_LW Snakemake workflow.
+# Paths are relative to the repository root.
+days:
+  - 245
+  - 246
+  - 247
+  - 249
+  - 250
+  - 251
+  - 252
+  - 254
+  - 255
+  - 256
+  - 257
+  - 258
+  - 259
+  - 261
+  - 262
+  - 263
+  - 264
+  - 265
+  - 266
+  - 268
+  - 269
+  - 270
+  - 271
+  - 273
+  - 274
+
+resolution_km: 2
+preprocess_step: 1
+lambda_center: -106
+scene_components: 10
+
+# Files used to train the scene classifier. Add more representative days as needed.
+training_files:
+  - data/preprocessed_files/abi_245_res2km_step1.npz
+
+model: data/models/gmm_pipeline_merged_res2km_10comp.joblib
+output:
+  root: data
+  monthly: data/monthly/monthly_flux_res2km.npz

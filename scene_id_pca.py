@@ -84,10 +84,12 @@ def build_arrays(input_file):
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
 	parser.add_argument("-f", "--input_file", type=str, default="data/preprocessed_files/abi_pix1000_step5.npz")
+	parser.add_argument("--model", type=str, default="data/models/gmm_pipeline_merged_res2km_10comp.joblib")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	args = parser.parse_args()
 	
 	input_file = args.input_file
+	model = args.model
 	lambda_center = args.lambda_center
 	
 	day = input_file.split("/")[-1].split(".")[0].split("_")[1]
@@ -101,7 +103,7 @@ if __name__ == '__main__':
 	BT, BT_nozeros, mask = build_arrays(input_file)
 
 	# Retrieve model
-	pipeline = joblib.load("data/models/gmm_pipeline_merged_"+res+"_10comp.joblib")
+	pipeline = joblib.load(model)
 	scaler = pipeline.named_steps["scaler"]
 	pca = pipeline.named_steps["pca"]
 	gmm = pipeline.named_steps["gmm"]

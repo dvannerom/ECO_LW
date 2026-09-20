@@ -9,3 +9,40 @@ The current workflow goes like this:
 5. Convert radiance to irradiance (flux) using the derived ADMs: radiance_to_flux.py
 6. convert narrowband fluxes to broadband flux: narrowband_to_broadband.py
 7. Compute monthly mean flux: monthly_flux.py
+
+## Running the workflow
+
+The original scripts remain available for individual experiments. For production
+runs, use the declarative workflow in `workflow/Snakefile`:
+
+```bash
+# Edit days, training files, resolution, and model settings first.
+snakemake -s workflow/Snakefile --configfile config.yaml -n
+
+# Run independent daily jobs in parallel.
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 8
+```
+
+Snakemake tracks preprocessing, scene classification, ADM fitting, narrowband
+conversion, broadband conversion, and monthly aggregation as separate stages.
+Completed daily products are reused automatically, and a failed stage can be
+resumed without restarting earlier stages. The legacy ADM and radiance scripts
+write several products in one invocation; the workflow records per-day
+completion markers for those batch operations.
+
+For a SLURM cluster, add a cluster profile or use Snakemake's executor plugin,
+for example:
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml \
+	--executor slurm --jobs 20 --latency-wait 60
+```
+
+The GMM and ADM parameters are calibration products. Train and inspect those
+products before running the production days, then set `model` in `config.yaml`
+to the approved model artifact. Monthly aggregation uses streaming sums and
+Welford statistics, so it does not stack all daily scenes in memory.
+
+The workflow currently preserves the existing NumPy/NPZ numerical interfaces.
+The next storage migration should replace the large intermediate NPZ files with
+chunked Zarr or HDF5 products while keeping the same stage boundaries.

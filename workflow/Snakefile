@@ -1,0 +1,149 @@
+from pathlib import Path
+
+DAYS = [int(day) for day in config["days"]]
+RESOLUTION = int(config["resolution_km"])
+STEP = int(config["preprocess_step"])
+SCENE_COMPONENTS = int(config["scene_components"])
+MODEL = config["model"]
+TRAINING_FILES = config["training_files"]
+
+
+def preprocessed(day):
+    return f"data/preprocessed_files/abi_{day}_res{RESOLUTION}km_step{STEP}.npz"
+
+
+def scene_id(day):
+    return f"data/scene_id/scene_id_{day}_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.npz"
+
+
+def adm(day, channel, scene):
+    return f"data/ADM/ADM_{day}_res{RESOLUTION}km_C{channel}_scene{scene}.npz"
+
+
+def narrowband(day, channel):
+    return f"data/narrowband_flux/narrowband_flux_{day}_res{RESOLUTION}km_C{channel}.npz"
+
+
+def broadband(day):
+    return f"data/broadband_flux/broadband_flux_{day}_res{RESOLUTION}km.npz"
+
+
+BROADBAND_OUTPUTS = [broadband(day) for day in DAYS]
+
+
+rule all:
+    input:
+        config["output"]["monthly"],
+        MODEL,
+        *BROADBAND_OUTPUTS
+
+
+rule train_scene_model:
+    input:
+        TRAINING_FILES
+    output:
+        MODEL
+    params:
+        components=SCENE_COMPONENTS
+    shell:
+        "python train_GMM.py --input_file {input} --n_components {params.components} --use_pca"
+
+
+rule preprocess:
+    output:
+        "data/preprocessed_files/abi_{day}_res" + str(RESOLUTION) + "km_step" + str(STEP) + ".npz"
+    params:
+        step=STEP,
+        resolution=RESOLUTION,
+        lambda_center=float(config["lambda_center"])
+    shell:
+        "python preprocess_data_ABI.py --day {wildcards.day} "
+        "--step {params.step} --res_km {params.resolution} "
+        "--lambda_center {params.lambda_center}"
+
+
+rule classify_scene:
+    input:
+        data=lambda wildcards: preprocessed(wildcards.day),
+        model=MODEL
+    output:
+        "data/scene_id/scene_id_{day}_res" + str(RESOLUTION) + "km_" + str(SCENE_COMPONENTS) + "comp.npz"
+    params:
+        lambda_center=float(config["lambda_center"])
+    shell:
+        "python scene_id_pca.py --input_file {input.data} "
+        "--model {input.model} --lambda_center {params.lambda_center}"
+
+
+rule fit_adm:
+    input:
+        data=lambda wildcards: preprocessed(wildcards.day),
+        scene=lambda wildcards: scene_id(wildcards.day)
+    output:
+        adms=expand(
+            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.npz",
+            channel=range(6),
+            scene=range(SCENE_COMPONENTS),
+        )
+    params:
+        resolution=RESOLUTION
+    shell:
+        "mkdir -p data/.workflow && "
+        "python fit_ADM.py --day {wildcards.day} --resolution {params.resolution} && "
+        "touch data/.workflow/adm_{wildcards.day}_complete"
+
+
+rule radiance_to_flux:
+    input:
+        data=lambda wildcards: preprocessed(wildcards.day),
+        scene=lambda wildcards: scene_id(wildcards.day),
+        adm=expand(
+            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.npz",
+            channel=range(6),
+            scene=range(SCENE_COMPONENTS),
+        )
+    output:
+        narrowbands=expand(
+            "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.npz",
+            channel=range(6),
+        )
+    params:
+        resolution=RESOLUTION,
+        lambda_center=float(config["lambda_center"])
+    shell:
+        "mkdir -p data/.workflow && "
+        "python radiance_to_flux.py --day {wildcards.day} "
+        "--resolution {params.resolution} --lambda_center {params.lambda_center} && "
+        "touch data/.workflow/radiance_to_flux_{wildcards.day}_complete"
+
+
+rule narrowband_to_broadband:
+    input:
+        data=lambda wildcards: preprocessed(wildcards.day),
+        narrowbands=expand(
+            "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.npz",
+            channel=range(6),
+        )
+    output:
+        "data/broadband_flux/broadband_flux_{day}_res" + str(RESOLUTION) + "km.npz"
+    params:
+        resolution=RESOLUTION,
+        lambda_center=float(config["lambda_center"])
+    shell:
+        "python narrowband_to_broadband.py --day {wildcards.day} "
+        "--resolution {params.resolution} --lambda_center {params.lambda_center}"
+
+
+rule monthly_flux:
+    input:
+        broadband=BROADBAND_OUTPUTS,
+        reference=lambda wildcards: preprocessed(DAYS[0])
+    output:
+        config["output"]["monthly"]
+    params:
+        resolution=RESOLUTION,
+        lambda_center=float(config["lambda_center"])
+    shell:
+        "python monthly_flux.py --inputs {input.broadband} "
+        "--reference-data {input.reference} --output {output} "
+        "--resolution {params.resolution} --lambda-center {params.lambda_center} --no-plot"
