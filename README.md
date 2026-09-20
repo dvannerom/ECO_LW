@@ -30,6 +30,33 @@ resumed without restarting earlier stages. The legacy ADM and radiance scripts
 write several products in one invocation; the workflow records per-day
 completion markers for those batch operations.
 
+For the production workflow, plotting is explicitly disabled in the compute steps:
+
+```bash
+python scene_id_pca.py --input_file data/preprocessed_files/abi_271_res2km_step1.nc \
+  --model data/models/gmm_pipeline_merged_res2km_10comp.joblib --lambda_center -106 --no-plot
+
+python fit_ADM.py --day 271 --resolution 2 --no-plot
+```
+
+This keeps the computational pipeline lighter and lets the figures be generated
+later, offline, from the saved NetCDF products.
+
+## Offline plotting
+
+Use the standalone plotting scripts after the computational stages have finished:
+
+```bash
+# Plot an already-generated scene classification output
+python plot_scene_id.py --input data/scene_id/scene_id_271_res2km_10comp.nc
+
+# Plot an ADM fit for a specific day/channel/scene pair
+python plot_fit_ADM.py --day 271 --resolution 2 --channel 0 --scene 0
+```
+
+These scripts read the saved NetCDF products and create PNG outputs in the
+`figures/` tree without rerunning the expensive data-processing steps.
+
 For a SLURM cluster, add a cluster profile or use Snakemake's executor plugin,
 for example:
 
