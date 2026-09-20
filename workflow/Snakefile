@@ -46,7 +46,7 @@ rule train_scene_model:
     params:
         components=SCENE_COMPONENTS
     shell:
-        "python train_GMM.py --input_file {input} --n_components {params.components} --use_pca"
+        "PYTHONPATH=src python scripts/train_GMM.py --input_file {input} --n_components {params.components} --use_pca"
 
 
 rule preprocess:
@@ -57,7 +57,7 @@ rule preprocess:
         resolution=RESOLUTION,
         lambda_center=float(config["lambda_center"])
     shell:
-        "python preprocess_data_ABI.py --day {wildcards.day} "
+        "PYTHONPATH=src python scripts/preprocess_data_ABI.py --day {wildcards.day} "
         "--step {params.step} --res_km {params.resolution} "
         "--lambda_center {params.lambda_center}"
 
@@ -71,7 +71,7 @@ rule classify_scene:
     params:
         lambda_center=float(config["lambda_center"])
     shell:
-        "python scene_id_pca.py --input_file {input.data} "
+        "PYTHONPATH=src python scripts/scene_id_pca.py --input_file {input.data} "
         "--model {input.model} --lambda_center {params.lambda_center} --no-plot"
 
 
@@ -89,7 +89,7 @@ rule fit_adm:
         resolution=RESOLUTION
     shell:
         "mkdir -p data/.workflow && "
-        "python fit_ADM.py --day {wildcards.day} --resolution {params.resolution} --no-plot && "
+        "PYTHONPATH=src python scripts/fit_ADM.py --day {wildcards.day} --resolution {params.resolution} --no-plot && "
         "touch data/.workflow/adm_{wildcards.day}_complete"
 
 
@@ -112,7 +112,7 @@ rule radiance_to_flux:
         lambda_center=float(config["lambda_center"])
     shell:
         "mkdir -p data/.workflow && "
-        "python radiance_to_flux.py --day {wildcards.day} "
+        "PYTHONPATH=src python scripts/radiance_to_flux.py --day {wildcards.day} "
         "--resolution {params.resolution} --lambda_center {params.lambda_center} && "
         "touch data/.workflow/radiance_to_flux_{wildcards.day}_complete"
 
@@ -130,7 +130,7 @@ rule narrowband_to_broadband:
         resolution=RESOLUTION,
         lambda_center=float(config["lambda_center"])
     shell:
-        "python narrowband_to_broadband.py --day {wildcards.day} "
+        "PYTHONPATH=src python scripts/narrowband_to_broadband.py --day {wildcards.day} "
         "--resolution {params.resolution} --lambda_center {params.lambda_center}"
 
 
@@ -144,6 +144,6 @@ rule monthly_flux:
         resolution=RESOLUTION,
         lambda_center=float(config["lambda_center"])
     shell:
-        "python monthly_flux.py --inputs {input.broadband} "
+        "PYTHONPATH=src python scripts/monthly_flux.py --inputs {input.broadband} "
         "--reference-data {input.reference} --output {output} "
         "--resolution {params.resolution} --lambda-center {params.lambda_center} --no-plot"
