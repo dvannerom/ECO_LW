@@ -14,7 +14,8 @@ Potentially generalizable to other satellites (EarthCare, 3MI)
 
 ## Coding principles
 
-- Python only
+- Python-first solutions
+- Use Snakemake-aware syntax highlighting/validation for Snakefile and config.yaml
 - NumPy-first solutions
 - Avoid unnecessary copies
 - Minimize RAM consumption
