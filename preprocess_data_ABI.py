@@ -7,11 +7,11 @@ import argparse
 import os
 from pathlib import Path
 from utils import *
-from netcdf_io import write_preprocessed
 from scipy.interpolate import griddata, RegularGridInterpolator
 from pyresample import geometry, kd_tree
 import pyproj
 import time
+from netCDF4 import Dataset
 
 def outer_frame(lon2d, lat2d):
     """Return the four sides of the swath as 1D arrays (lon, lat)."""
@@ -265,148 +265,240 @@ def preprocess_data(files, step):#, res, lon_min, lon_max, lat_max):
 	lat, lon, lat_corr, lon_corr, lza = xyGOES_to_latlonGRID(xGOES_grid, yGOES_grid, goes_imager_projection, CTH)
 
 	return lat, wrap_lon(lon), lat_corr, wrap_lon(lon_corr), lza, rad, BT, CTH, planck, goes_imager_projection
-		
+
+
+def load_navigation(files, step):
+	"""Load geometry without loading the nine radiance channels."""
+	with xr.open_dataset(files[9][0], engine="netcdf4") as cth_dataset:
+		cth = cth_dataset.HT[::step, ::step].values
+
+	with xr.open_dataset(files[3][0], engine="netcdf4") as reference_dataset:
+		x_goes = reference_dataset.x[::step].values
+		y_goes = reference_dataset.y[::step].values
+		projection = reference_dataset.goes_imager_projection
+
+	x_grid, y_grid = np.meshgrid(x_goes, y_goes)
+	lat, lon, lat_corr, lon_corr, lza = xyGOES_to_latlonGRID(
+		x_grid, y_grid, projection, cth
+	)
+
+	return {
+		"lat": lat,
+		"lon": wrap_lon(lon),
+		"lat_corr": lat_corr,
+		"lon_corr": wrap_lon(lon_corr),
+		"lza": lza,
+		"cth": cth,
+		"projection": projection,
+	}
+
+
+def resample_field(source_grid, values, area_def, radius_of_influence):
+	"""Resample one field so pyresample never receives a 3-D channel stack."""
+	return kd_tree.resample_nearest(
+		source_grid,
+		values,
+		area_def,
+		radius_of_influence=radius_of_influence,
+		fill_value=np.nan,
+	)
+
+
+class PreprocessedWriter:
+	"""Write the preprocessing product while arrays are still short-lived."""
+
+	def __init__(self, path, height, width):
+		Path(path).parent.mkdir(parents=True, exist_ok=True)
+		self.dataset = Dataset(path, "w", format="NETCDF4")
+		self.dataset.setncattr("product", "ECO ABI preprocessed data")
+		self.dataset.createDimension("y", height)
+		self.dataset.createDimension("x", width)
+		self.dataset.createDimension("channel", 9)
+		self.dataset.createDimension("planck_parameter", 4)
+		self.variables = {}
+
+	def _create(self, name, values, dimensions):
+		array = np.asarray(values)
+		chunksizes = None
+		if dimensions == ("y", "x", "channel"):
+			chunksizes = (
+				min(self.dataset.dimensions["y"].size, 256),
+				min(self.dataset.dimensions["x"].size, 256),
+				1,
+			)
+		variable = self.dataset.createVariable(
+			name,
+			"f4" if array.dtype.kind == "f" else array.dtype,
+			dimensions,
+			zlib=True,
+			complevel=1,
+			shuffle=True,
+			chunksizes=chunksizes,
+		)
+		self.variables[name] = variable
+		return variable
+
+	def write_scalar(self, name, value):
+		self._create(name, np.asarray(value), ())[:] = value
+
+	def write_2d(self, name, values):
+		self._create(name, values, ("y", "x"))[:] = values
+
+	def write_planck(self, name, values):
+		self._create(name, values, ("channel", "planck_parameter"))[:] = values
+
+	def write_channel(self, name, channel, values):
+		if name not in self.variables:
+			self._create(name, values, ("y", "x", "channel"))
+		self.variables[name][:, :, channel] = values
+
+	def close(self):
+		self.dataset.close()
+
+
+def process_satellite(files, navigation, source_grid, corrected_grid, area_def,
+					  radius_of_influence, writer, satellite_name, step):
+	"""Resample one satellite and one channel at a time."""
+	static_fields = (
+		("lza", "lza", source_grid, ""),
+		("CTH", "cth", source_grid, ""),
+		("lza", "lza", corrected_grid, "_corr"),
+		("CTH", "cth", corrected_grid, "_corr"),
+	)
+	for output_name, navigation_name, grid, suffix in static_fields:
+		resampled = resample_field(
+			grid,
+			navigation[navigation_name],
+			area_def,
+			radius_of_influence,
+		)
+		writer.write_2d(
+			f"{output_name}_{satellite_name}_interp{suffix}", resampled
+		)
+		del resampled
+
+	planck = np.empty((9, 4), dtype=np.float32)
+	for channel, radiance_files in enumerate(files[:9]):
+		with xr.open_dataset(radiance_files[0], engine="netcdf4") as dataset:
+			radiance = dataset.Rad[::step, ::step].values
+			planck[channel] = [
+				dataset.planck_fk1.values,
+				dataset.planck_fk2.values,
+				dataset.planck_bc1.values,
+				dataset.planck_bc2.values,
+			]
+			brightness_temperature = rad_to_T(radiance, dataset)
+
+		for suffix, grid in (("", source_grid), ("_corr", corrected_grid)):
+			resampled_radiance = resample_field(
+				grid, radiance, area_def, radius_of_influence
+			)
+			resampled_temperature = resample_field(
+				grid, brightness_temperature, area_def, radius_of_influence
+			)
+			writer.write_channel(
+				f"rad_{satellite_name}_interp{suffix}",
+				channel,
+				resampled_radiance,
+			)
+			writer.write_channel(
+				f"BT_{satellite_name}_interp{suffix}",
+				channel,
+				resampled_temperature,
+			)
+			del resampled_radiance, resampled_temperature
+
+		del radiance, brightness_temperature
+
+	writer.write_planck(f"planck_{satellite_name}", planck)
+	del planck
+
 
 if __name__ == '__main__':
-    
-	parser = argparse.ArgumentParser(description="sample argument parser")
+	parser = argparse.ArgumentParser(description="Preprocess ABI radiances")
 	parser.add_argument("-d", "--day", type=str, default="245")
 	parser.add_argument("-s", "--step", type=int, default=1)
 	parser.add_argument("-r", "--res_km", type=float, default=2)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	args = parser.parse_args()
-	
+
 	day = args.day
 	step = args.step
 	res_km = args.res_km
 	lambda_center = args.lambda_center
-
 	files = build_files(day)
-	lat_G16, lon_G16, lat_corr_G16, lon_corr_G16, lza_G16, rad_G16, BT_G16, CTH_G16, planck_G16, goes_imager_projection = preprocess_data(files[:10],step)#,res,lon_min,lon_max,lat_max)
-	lat_G18, lon_G18, lat_corr_G18, lon_corr_G18, lza_G18, rad_G18, BT_G18, CTH_G18, planck_G18, _ = preprocess_data(files[10:],step)
+	navigation_g16 = load_navigation(files[:10], step)
+	navigation_g18 = load_navigation(files[10:], step)
 
-	print("Data preprocessed")
+	goes = navigation_g16["projection"]
+	a = float(goes.semi_major_axis)
+	b = float(goes.semi_minor_axis)
+	e = np.sqrt(1.0 - (b * b) / (a * a))
+	Rq = a * np.sqrt(0.5 * (1.0 + ((1.0 - e * e) / e) * atanh_safe(e)))
+	proj_dict = {"proj": "sinu", "R": Rq, "lon_0": lambda_center}
+	proj = pyproj.Proj(**proj_dict)
 
-	# --- 1) Read GOES projection parameters from the dataset ---
-	goes = goes_imager_projection
-	a = float(goes.semi_major_axis)  # r_eq (meters)
-	b = float(goes.semi_minor_axis)  # r_pol (meters)
-	
-	# --- 2) Compute authalic radius ---
-	# eccentricity of ellipsoid
-	e = np.sqrt(1.0 - (b*b)/(a*a))
-
-	Rq = a * np.sqrt(0.5 * (1.0 + ((1.0 - e*e) / e) * atanh_safe(e)))
-	
-	# --- 3) Define target sinusoidal (equal-area) projection using authalic radius ---
-	proj_dict = {
-	    'proj': 'sinu',
-	    'R': Rq,           # authalic radius (meters)
-	    'lon_0': lambda_center      # central meridian in degrees (use your lambda_center if different)
-	}
-
-	# Interpolate G16 data on native lat-lon grid
-	# Define original grid
-	G16_grid = geometry.SwathDefinition(lons=lon_G16, lats=lat_G16)
-	G16_corr_grid = geometry.SwathDefinition(lons=lon_corr_G16, lats=lat_corr_G16)
-	G18_grid = geometry.SwathDefinition(lons=lon_G18, lats=lat_G18)
-	G18_corr_grid = geometry.SwathDefinition(lons=lon_corr_G18, lats=lat_corr_G18)
-	# Define new grid
-	#new_grid = geometry.SwathDefinition(lons=lon_interp_grid, lats=lat_interp_grid)
-	
-	# --- 4) Choose domain bounds and 2 km resolution ---
-	res_m = res_km * 1000.0
-	
-	# --- 5) Project bounds to sinusoidal meters and build area extent ---
-	proj = pyproj.Proj(**proj_dict)   # pyproj definition for our sinusoidal CRS
-
-	lon_fields = [lon_G16, lon_G18]
-	lat_fields = [lat_G16, lat_G18]
-	
-	# 5) Project all chosen swaths and compute the tightest projected bounding box
 	xmin, ymin = np.inf, np.inf
 	xmax, ymax = -np.inf, -np.inf
-	
-	for lon_deg, lat_deg in zip(lon_fields, lat_fields):
-		
-		# project to sinusoidal meters
-		x, y = proj(lon_deg, lat_deg)
-	
-		# update running bounds with finite points only
-		m = np.isfinite(x) & np.isfinite(y)
-		if np.any(m):
-			xmin = min(xmin, np.nanmin(x[m]))
-			xmax = max(xmax, np.nanmax(x[m]))
-			ymin = min(ymin, np.nanmin(y[m]))
-			ymax = max(ymax, np.nanmax(y[m]))
-	
-	width  = int(np.ceil((xmax - xmin) / res_m))
+	for navigation in (navigation_g16, navigation_g18):
+		x_projected, y_projected = proj(navigation["lon"], navigation["lat"])
+		finite = np.isfinite(x_projected) & np.isfinite(y_projected)
+		if np.any(finite):
+			xmin = min(xmin, np.nanmin(x_projected[finite]))
+			xmax = max(xmax, np.nanmax(x_projected[finite]))
+			ymin = min(ymin, np.nanmin(y_projected[finite]))
+			ymax = max(ymax, np.nanmax(y_projected[finite]))
+
+	res_m = res_km * 1000.0
+	width = int(np.ceil((xmax - xmin) / res_m))
 	height = int(np.ceil((ymax - ymin) / res_m))
-	
-	# Snap max edges back onto the pixel grid so get_lonlats aligns
-	xmax = xmin + width  * res_m
+	xmax = xmin + width * res_m
 	ymax = ymin + height * res_m
-	
-	area_extent = (xmin, ymin, xmax, ymax)
-	
-	# 7) Create the target area on which to resample
 	area_def = geometry.AreaDefinition(
-	    area_id='abi_sinu_union_g16_g18',
-	    description='ABI (G16+G18) union on sinusoidal equal-area grid (authalic)',
-	    proj_id='sinu_auth_union',
-	    projection=proj_dict,
-	    width=width,
-	    height=height,
-	    area_extent=area_extent
+		area_id="abi_sinu_union_g16_g18",
+		description="ABI (G16+G18) union on sinusoidal equal-area grid (authalic)",
+		proj_id="sinu_auth_union",
+		projection=proj_dict,
+		width=width,
+		height=height,
+		area_extent=(xmin, ymin, xmax, ymax),
 	)
 
-	lon_interp_grid, lat_interp_grid = area_def.get_lonlats()
-
-	x = np.linspace(area_def.area_extent[0], area_def.area_extent[2], area_def.width)
-	y = np.linspace(area_def.area_extent[1], area_def.area_extent[3], area_def.height)
-	x_grid, y_grid = np.meshgrid(x, y)
-	
-	roi_m = 20000.0  # radius of influence (m)
-
-	# Nearest-neighbor resampling
-	# Interpolate G16 data on native lat-lon grid
-	lza_G16_interp = kd_tree.resample_nearest(G16_grid,lza_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	CTH_G16_interp = kd_tree.resample_nearest(G16_grid,CTH_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	rad_G16_interp = kd_tree.resample_nearest(G16_grid,rad_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	BT_G16_interp = kd_tree.resample_nearest(G16_grid,BT_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	print("Interpolation of G16 data from native lat-lon grid done")
-	# Interpolate G16 data on parallax-corrected lat-lon grid
-	lza_G16_interp_corr = kd_tree.resample_nearest(G16_corr_grid,lza_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	CTH_G16_interp_corr = kd_tree.resample_nearest(G16_corr_grid,CTH_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	rad_G16_interp_corr = kd_tree.resample_nearest(G16_corr_grid,rad_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	BT_G16_interp_corr = kd_tree.resample_nearest(G16_corr_grid,BT_G16, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	print("Interpolation of G16 data from parallax-corrected lat-lon grid done")
-	# Interpolate G18 data on native lat-lon grid
-	lza_G18_interp = kd_tree.resample_nearest(G18_grid,lza_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	CTH_G18_interp = kd_tree.resample_nearest(G18_grid,CTH_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	rad_G18_interp = kd_tree.resample_nearest(G18_grid,rad_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	BT_G18_interp = kd_tree.resample_nearest(G18_grid,BT_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	print("Interpolation of G18 data from native lat-lon grid done")
-	# Interpolate G18 data on parallax-corrected lat-lon grid
-	lza_G18_interp_corr = kd_tree.resample_nearest(G18_corr_grid,lza_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	CTH_G18_interp_corr = kd_tree.resample_nearest(G18_corr_grid,CTH_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	rad_G18_interp_corr = kd_tree.resample_nearest(G18_corr_grid,rad_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	BT_G18_interp_corr = kd_tree.resample_nearest(G18_corr_grid,BT_G18, area_def, radius_of_influence=roi_m, fill_value=np.nan)
-	print("Interpolation of G18 data from parallax-corrected lat-lon grid done")
-
-	write_preprocessed(
-		"data/preprocessed_files/abi_"+day+"_res"+str(int(res_km))+"km_step"+str(step)+".nc",
-		{
-			"width": width, "height": height, "step": step,
-			"planck_G16": planck_G16, "planck_G18": planck_G18,
-			"lat_interp_grid": lat_interp_grid, "lon_interp_grid": lon_interp_grid,
-			"lza_G16_interp": lza_G16_interp, "lza_G18_interp": lza_G18_interp,
-			"rad_G16_interp": rad_G16_interp, "rad_G18_interp": rad_G18_interp,
-			"BT_G16_interp": BT_G16_interp, "BT_G18_interp": BT_G18_interp,
-			"CTH_G16_interp": CTH_G16_interp, "CTH_G18_interp": CTH_G18_interp,
-			"lza_G16_interp_corr": lza_G16_interp_corr, "lza_G18_interp_corr": lza_G18_interp_corr,
-			"rad_G16_interp_corr": rad_G16_interp_corr, "rad_G18_interp_corr": rad_G18_interp_corr,
-			"BT_G16_interp_corr": BT_G16_interp_corr, "BT_G18_interp_corr": BT_G18_interp_corr,
-			"CTH_G16_interp_corr": CTH_G16_interp_corr, "CTH_G18_interp_corr": CTH_G18_interp_corr,
-		}
+	output_path = (
+		f"data/preprocessed_files/abi_{day}_res{int(res_km)}km_step{step}.nc"
 	)
+	writer = PreprocessedWriter(output_path, height, width)
+	try:
+		writer.write_scalar("width", width)
+		writer.write_scalar("height", height)
+		writer.write_scalar("step", step)
+		lon_interp_grid, lat_interp_grid = area_def.get_lonlats()
+		writer.write_2d("lat_interp_grid", lat_interp_grid)
+		writer.write_2d("lon_interp_grid", lon_interp_grid)
+		del lon_interp_grid, lat_interp_grid
+
+		roi_m = 20000.0
+		g16_grid = geometry.SwathDefinition(
+			lons=navigation_g16["lon"], lats=navigation_g16["lat"]
+		)
+		g16_corr_grid = geometry.SwathDefinition(
+			lons=navigation_g16["lon_corr"], lats=navigation_g16["lat_corr"]
+		)
+		process_satellite(
+			files[:10], navigation_g16, g16_grid, g16_corr_grid,
+			area_def, roi_m, writer, "G16", step,
+		)
+		del navigation_g16, g16_grid, g16_corr_grid
+
+		g18_grid = geometry.SwathDefinition(
+			lons=navigation_g18["lon"], lats=navigation_g18["lat"]
+		)
+		g18_corr_grid = geometry.SwathDefinition(
+			lons=navigation_g18["lon_corr"], lats=navigation_g18["lat_corr"]
+		)
+		process_satellite(
+			files[10:], navigation_g18, g18_grid, g18_corr_grid,
+			area_def, roi_m, writer, "G18", step,
+		)
+	finally:
+		writer.close()
