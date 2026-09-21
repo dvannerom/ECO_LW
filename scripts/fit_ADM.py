@@ -51,9 +51,17 @@ if __name__ == '__main__':
 	#res = data_file.split("/")[-1].split(".")[0].split("_")[1]
 
 	# Retrieve data
-	preprocessed_data = load_data(data_file)
-	rad_G16 = preprocessed_data['rad_G16_interp_corr'][:,:,[0,3,4,6,7,8]]
-	rad_G18 = preprocessed_data['rad_G18_interp_corr'][:,:,[0,3,4,6,7,8]]
+	preprocessed_data = load_data(
+		data_file,
+		variable_names=(
+			"rad_G16_interp_corr",
+			"rad_G18_interp_corr",
+			"lza_G16_interp_corr",
+			"lza_G18_interp_corr",
+		),
+	)
+	rad_G16 = preprocessed_data['rad_G16_interp_corr']
+	rad_G18 = preprocessed_data['rad_G18_interp_corr']
 	#BT_G16 = npz_datafile['BT_G16_interp_corr'][:,:,[0,3,4,6,7,8]]
 	#BT_G18 = npz_datafile['BT_G18_interp_corr'][:,:,[0,3,4,6,7,8]]
 	for name, arr in [                                   
@@ -68,7 +76,8 @@ if __name__ == '__main__':
 		    arr.dtype,
 		    f"{arr.nbytes / 1024**3:.2f} GB"
 		)
-	# Flatten arrays then select channels
+	# Flatten arrays; select the six ADM channels by index below without copying
+	# the full radiance cubes.
 	rad_G16_flat = rad_G16.reshape(-1, rad_G16.shape[-1])
 	rad_G18_flat = rad_G18.reshape(-1, rad_G18.shape[-1])
 	#BT_G16_flat = BT_G16.reshape(-1, BT_G16.shape[-1])
@@ -103,10 +112,17 @@ if __name__ == '__main__':
 	#], axis=-1)
 	#mask_rad = np.all((rad_mask > 0) & (rad_mask < 1e3) & np.isfinite(rad_mask), axis=1)
 	mask_rad = np.ones(rad_G16_flat.shape[0], dtype=bool)
-	
-	for arr16, arr18 in zip(rad_G16_flat.T, rad_G18_flat.T):
+	channel_indices = (0, 3, 4, 6, 7, 8)
+	for source_channel in channel_indices:
+		arr16 = rad_G16_flat[:, source_channel]
+		arr18 = rad_G18_flat[:, source_channel]
 		mask_rad &= (arr16 > 0) & (arr16 < 1e3) & np.isfinite(arr16)
 		mask_rad &= (arr18 > 0) & (arr18 < 1e3) & np.isfinite(arr18)
+
+	lza_G16 = preprocessed_data['lza_G16_interp_corr'].ravel()[mask_rad]
+	lza_G18 = preprocessed_data['lza_G18_interp_corr'].ravel()[mask_rad]
+	scene_data = load_data(scene_file, variable_names=("labels",))
+	labels = scene_data['labels'][mask_rad]
 	#mask_rad = (
 	#    (rad_mask[:, 0] > 0) & (rad_mask[:, 1] > 0) & (rad_mask[:, 2] > 0) & (rad_mask[:, 3] > 0) &
 	#    (rad_mask[:, 4] > 0) & (rad_mask[:, 5] > 0) & (rad_mask[:, 6] > 0) & (rad_mask[:, 7] > 0) &
@@ -118,17 +134,11 @@ if __name__ == '__main__':
 	#    ~np.isnan(rad_mask[:, 4]) & ~np.isnan(rad_mask[:, 5]) & ~np.isnan(rad_mask[:, 6]) & ~np.isnan(rad_mask[:, 7]) &
 	#    ~np.isnan(rad_mask[:, 8]) & ~np.isnan(rad_mask[:, 9]) & ~np.isnan(rad_mask[:, 10]) & ~np.isnan(rad_mask[:, 11])
 	#)
-	for channel in range(6):
+	for channel, source_channel in enumerate(channel_indices):
 		for scene in range(10):
 			print("Channel "+str(channel)+", scene "+str(scene))
-			rad_G16 = rad_G16_flat[:,channel][mask_rad]#[mask & mask_rad] 
-			rad_G18 = rad_G18_flat[:,channel][mask_rad]#[mask & mask_rad]
-			lza_G16 = preprocessed_data['lza_G16_interp_corr'].ravel()[mask_rad]#[mask & mask_rad]
-			lza_G18 = preprocessed_data['lza_G18_interp_corr'].ravel()[mask_rad]#[mask & mask_rad]
-
-			# Retrieve scene labels
-			scene_data = load_data(scene_file)
-			labels = scene_data['labels'][mask_rad]#[mask & mask_rad]
+			rad_G16 = rad_G16_flat[:,source_channel][mask_rad]#[mask & mask_rad]
+			rad_G18 = rad_G18_flat[:,source_channel][mask_rad]#[mask & mask_rad]
 			#npzfile_G16 = np.load(file_G16)
 			#rad_G16 = npzfile_G16['arr_0'][:,channel]
 			#TIR_G16 = npzfile_G16['arr_1'][:,channel]
