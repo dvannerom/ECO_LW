@@ -4,10 +4,11 @@ import numpy as np
 import xarray as xr
 
 
-def load_data(path):
-    """Load a NetCDF product into a NumPy-backed variable mapping."""
+def load_data(path, variable_names=None):
+    """Load selected NetCDF variables into a NumPy-backed mapping."""
     with xr.open_dataset(path, engine="netcdf4") as dataset:
-        return {name: variable.values for name, variable in dataset.variables.items()}
+        names = dataset.variables if variable_names is None else variable_names
+        return {name: dataset[name].values for name in names}
 
 
 def write_dataset(path, variables, dimensions, attrs=None):

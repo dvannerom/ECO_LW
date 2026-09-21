@@ -28,7 +28,15 @@ def build_arrays(input_file, chunk_rows=2048):
 	This avoids materializing several full-scene float arrays simultaneously,
 	which can exhaust memory for large GOES granules.
 	"""
-	dataset = load_data(input_file)
+	dataset = load_data(
+		input_file,
+		variable_names=(
+			"lat_interp_grid",
+			"lon_interp_grid",
+			"BT_G16_interp",
+			"BT_G18_interp",
+		),
+	)
 	lat_interp_grid = dataset['lat_interp_grid']
 	lon_interp_grid = dataset['lon_interp_grid']
 
@@ -109,7 +117,7 @@ def build_arrays(input_file, chunk_rows=2048):
 
 	BT_nozeros = np.concatenate(valid_features, axis=0)
 	valid_flat = np.concatenate(valid_positions, axis=0)
-	return BT_nozeros, valid_flat, flat_mask
+	return BT_nozeros, valid_flat, flat_mask, lat_interp_grid, lon_interp_grid
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
@@ -126,12 +134,8 @@ if __name__ == '__main__':
 	day = input_file.split("/")[-1].split(".")[0].split("_")[1]
 	res = input_file.split("/")[-1].split(".")[0].split("_")[2]
 		
-	dataset = load_data(input_file)
-	lat_interp_grid = dataset['lat_interp_grid']
-	lon_interp_grid = dataset['lon_interp_grid']
-
 	# Retrieve data
-	BT_nozeros, valid_flat, mask = build_arrays(input_file)
+	BT_nozeros, valid_flat, mask, lat_interp_grid, lon_interp_grid = build_arrays(input_file)
 
 	# Retrieve model
 	pipeline = joblib.load(model)
@@ -163,6 +167,7 @@ if __name__ == '__main__':
 	sorted_labels[valid_flat] = sorted_labels_nozeros
 	
 	scene_map = sorted_labels.reshape(lat_interp_grid.shape[0], lat_interp_grid.shape[1])
+	suffix = f"{day}_{res}_{int(n_components)}comp"
 	
 	# -----------------------------
 	# Plot (optional; can be done offline)
@@ -187,7 +192,6 @@ if __name__ == '__main__':
 		cbar.set_ticks(ticks)
 		fig.tight_layout()
 		
-		suffix = f"{day}_{res}_{int(n_components)}comp"
 		os.makedirs("figures/scene_id", exist_ok=True)
 		plt.savefig(f"figures/scene_id/scene_id_{suffix}.png", dpi=150)
 		plt.show()
