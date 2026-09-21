@@ -136,7 +136,6 @@ if __name__ == '__main__':
 	#)
 	for channel, source_channel in enumerate(channel_indices):
 		for scene in range(10):
-			print("Channel "+str(channel)+", scene "+str(scene))
 			rad_G16 = rad_G16_flat[:,source_channel][mask_rad]#[mask & mask_rad]
 			rad_G18 = rad_G18_flat[:,source_channel][mask_rad]#[mask & mask_rad]
 			#npzfile_G16 = np.load(file_G16)
@@ -155,8 +154,8 @@ if __name__ == '__main__':
 			# Radiance ratio
 			#rad_ratio = rad_G16/rad_G18
 			rad_ratio = np.divide(rad_G16, rad_G18, out=np.zeros_like(rad_G16), where=rad_G18!=0)
-			print("Non-0 count:",np.count_nonzero(rad_G16),np.count_nonzero(rad_G18))
-			print("NaN count:",np.count_nonzero(np.isnan(rad_G16)),np.count_nonzero(np.isnan(rad_G18)))
+			#print("Non-0 count:",np.count_nonzero(rad_G16),np.count_nonzero(rad_G18))
+			#print("NaN count:",np.count_nonzero(np.isnan(rad_G16)),np.count_nonzero(np.isnan(rad_G18)))
 			# Find the unique labels
 			unique_labels = np.unique(labels)
 			scene_label = unique_labels[scene]
@@ -167,7 +166,7 @@ if __name__ == '__main__':
 			rad_G18_scene   = rad_G18[scene_mask]
 			lza_G16_scene   = lza_G16[scene_mask]
 			lza_G18_scene   = lza_G18[scene_mask]
-			print("Shape (scene): ",rad_ratio_scene.shape)
+			#print("Shape (scene): ",rad_ratio_scene.shape)
 
 			# Define x and y variables
 			x_var = lza_G16_scene 
@@ -198,7 +197,7 @@ if __name__ == '__main__':
 			#perr = np.sqrt(np.diag(pcov))
 			# Determine normalization factor for the ADM to integrate to unity
 			norm_ADM = 1./(quad(radiance_integrand, 0, 90, args=(popt[0],))[0])
-			print(norm_ADM)
+			#print(norm_ADM)
 
 			# Fit for the normalization in 1D
 			#popt_norm, pcov_norm = curve_fit(radiance_lin_norm,(lza_G16_scene,np.full_like(lza_G16_scene,popt[0]),np.full_like(lza_G16_scene,popt[1])),rad_G16_scene)
@@ -206,7 +205,7 @@ if __name__ == '__main__':
 			#popt_norm, pcov_norm = curve_fit(radiance_quad_norm,(x_var,np.full_like(x_var,popt[0]),np.full_like(x_var,popt[1])),y_var)
 			perr_norm = np.sqrt(np.diag(pcov_norm))	
 
-			print("a = "+str(popt_norm[0])+" +/- "+str(100*perr_norm[0]/np.abs(popt_norm[0]))+" %, b = "+str(popt[0])+" +/- "+str(100*perr[0]/np.abs(popt[0]))+" %")
+			#print("a = "+str(popt_norm[0])+" +/- "+str(100*perr_norm[0]/np.abs(popt_norm[0]))+" %, b = "+str(popt[0])+" +/- "+str(100*perr[0]/np.abs(popt[0]))+" %")
 			#flux_upward = (1./1000)*quad(flux_upward_integrand,0,90,args=(popt_norm,popt))[0]
 			#flux = (1./1000)*quad(flux_integrand,0,90,args=(popt_norm,popt))[0]
 			#print("Flux = "+str(flux)+" W/m2")

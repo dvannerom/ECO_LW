@@ -1,4 +1,5 @@
 import numpy as np
+import xarray as xr
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, BoundaryNorm
@@ -39,49 +40,24 @@ if __name__ == '__main__':
 	radiance_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc"
 	scene_file = "data/scene_id/scene_id_"+str(day)+"_res"+str(res)+"km_10comp.nc"
 
-	# Retrieve radiances
-	radiance_data = load_data(radiance_file)
-	print(
-	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-	    "GB"
-	)
-	lat_interp_grid = radiance_data['lat_interp_grid']
-	lon_interp_grid = radiance_data['lon_interp_grid']
-	shape_x, shape_y = radiance_data['lat_interp_grid'].shape[0], radiance_data['lat_interp_grid'].shape[1]
-	print(
-	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-	    "GB"
-	)
-	lza_interp_grid_G16 = radiance_data['lza_G16_interp_corr'].ravel()
-	lza_interp_grid_G18 = radiance_data['lza_G18_interp_corr'].ravel()
-	print(
-	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-	    "GB"
-	)
+	# Open the product lazily; read only the current channel inside the loop.
+	radiance_data = xr.open_dataset(radiance_file, engine="netcdf4", cache=False)
+	lat_interp_grid = radiance_data['lat_interp_grid'].values
+	lon_interp_grid = radiance_data['lon_interp_grid'].values
+	shape_x, shape_y = lat_interp_grid.shape
+	lza_interp_grid_G16 = radiance_data['lza_G16_interp_corr'].values.ravel()
+	lza_interp_grid_G18 = radiance_data['lza_G18_interp_corr'].values.ravel()
 
 	# Retrieve scene labels
-	scene_data = load_data(scene_file)
+	scene_data = load_data(scene_file, variable_names=("labels",))
 	labels = scene_data['labels']
-	print(
-	    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-	    "GB"
-	)
 
 	for channel in range(6):
-		print("Channel "+str(channel))
 		index_channel = index_to_channel(channel)
-		planck_G16 = radiance_data['planck_G16'][index_channel,:]
-		planck_G18 = radiance_data['planck_G18'][index_channel,:]
-		print(
-		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		    "GB"
-		)
-		rad_interp_G16 = radiance_data['rad_G16_interp_corr'][:,:,index_channel].ravel()
-		rad_interp_G18 = radiance_data['rad_G18_interp_corr'][:,:,index_channel].ravel()
-		print(
-		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		    "GB"
-		)
+		planck_G16 = radiance_data['planck_G16'].isel(channel=index_channel).values
+		planck_G18 = radiance_data['planck_G18'].isel(channel=index_channel).values
+		rad_interp_G16 = radiance_data['rad_G16_interp_corr'].isel(channel=index_channel).values.ravel()
+		rad_interp_G18 = radiance_data['rad_G18_interp_corr'].isel(channel=index_channel).values.ravel()
 
 		# Retrieve ADMs
 		b_scene = []
@@ -94,10 +70,6 @@ if __name__ == '__main__':
 			
 			b_scene.append(adm["b"])
 			norm_scene.append(adm["norm"])
-		print(
-		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		    "GB"
-		)
 
 		#npzfile_scene0 = np.load("data/ADM/ADM_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+"_scene0.npz")
 		#npzfile_scene1 = np.load("data/ADM/ADM_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+"_scene1.npz")
@@ -120,10 +92,6 @@ if __name__ == '__main__':
 		# Convert G16 and G18 radiances to narrowband fluxes
 		rad_interp_G16_corr = rad_interp_G16.copy()
 		rad_interp_G18_corr = rad_interp_G18.copy()
-		print(
-		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		    "GB"
-		)
 		#for i in range(10):
 		#	R_G16 = norm_scene[i]*radiance(lza_interp_grid_G16[labels==i],b_scene[i])
 		#	rad_interp_G16_corr[labels==i] *= (1./R_G16)
@@ -135,18 +103,10 @@ if __name__ == '__main__':
 			rad_interp_G16_corr[mask] /= R_G16
 			R_G18 = norm_scene[i] * radiance(lza_interp_grid_G18[mask],b_scene[i])
 			rad_interp_G18_corr[mask] /= R_G18
-		print(
-		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		    "GB"
-		)
 
 		# Convert corrected radiances to BT
 		BT_G16 = radiance_to_brightness_temperature(rad_interp_G16_corr, planck_G16)
 		BT_G18 = radiance_to_brightness_temperature(rad_interp_G18_corr, planck_G18)
-		print(
-		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		    "GB"
-		)
 
 		#plt.hist(rad_interp_G16_corr[(rad_interp_G16_corr>0) & (rad_interp_G16_corr<1e03)],100)
 		#plt.savefig("figures/rad_G16_"+str(res)+"_C"+str(channel)+".png")
@@ -165,7 +125,7 @@ if __name__ == '__main__':
 		#mask2 = (np.abs(diff)<200) & (lza_interp_grid_G16<75) & (lza_interp_grid_G18<75)
 		#mask1_corr = (np.abs(diff_corr)<200)
 		#mask2_corr = (np.abs(diff_corr)<200) & (lza_interp_grid_G16<75) & (lza_interp_grid_G18<75)
-		print(str(np.nanstd(diff/rad_interp_G16))+"\t"+str(np.nanstd(diff_corr/rad_interp_G16_corr)))
+		#print(str(np.nanstd(diff/rad_interp_G16))+"\t"+str(np.nanstd(diff_corr/rad_interp_G16_corr)))
 
 		#bins = np.linspace(-200,200,100)
 		#plt.hist(diff_corr,bins)
@@ -173,16 +133,10 @@ if __name__ == '__main__':
 		#plt.savefig("figures/radiance_to_flux_diff_CH"+str(channel)+".png")
 		#plt.close()
 
-		diff = diff.reshape(shape_x,shape_y) 
-		diff_corr = diff_corr.reshape(shape_x,shape_y) 
-
 		#max_diff = max(np.nanmax(diff),-np.nanmin(diff))
 		#max_diff_corr = max(np.nanmax(diff_corr),-np.nanmin(diff_corr))
 		#max_glob = max(max_diff,max_diff_corr)
-		print(
-		    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		    "GB"
-		)
+		del diff, diff_corr
 
 		## Delete unnecessary arrays (for memory efficiency)
 		#del rad_interp_G16
@@ -208,10 +162,6 @@ if __name__ == '__main__':
 		#axs[0].coastlines()
 		#axs[0].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
 		#cbar = fig.colorbar(pc0, ax=axs[0], orientation="vertical")
-		#print(
-		#    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		#    "GB"
-		#)
 		#pc1 = axs[1].pcolormesh(lon_interp_grid, lat_interp_grid, diff_corr, cmap='bwr', transform=ccrs.PlateCarree(), vmin=-40, vmax=40)
 		#axs[1].set_global()
 		#axs[1].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
@@ -222,10 +172,6 @@ if __name__ == '__main__':
 		#fig.tight_layout()
 		#plt.savefig("figures/radiance_to_flux_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+".png")
 		#plt.close()
-		#print(
-		#    psutil.Process(os.getpid()).memory_info().rss / 1024**3,
-		#    "GB"
-		#)
 
 		write_dataset(
 			"data/narrowband_flux/narrowband_flux_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+".nc",
@@ -257,3 +203,5 @@ if __name__ == '__main__':
 		del BT_G18
 		
 		gc.collect()
+
+	radiance_data.close()
