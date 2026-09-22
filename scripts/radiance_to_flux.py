@@ -10,7 +10,7 @@ import psutil
 import os
 import gc
 from netcdf_io import load_data, write_dataset
-from adm import elmer, radiance_linear as radiance
+from adm_fitting import correct_radiance
 from radiometry import radiance_to_brightness_temperature
 
 
@@ -99,10 +99,8 @@ if __name__ == '__main__':
 		#	rad_interp_G18_corr[labels==i] *= (1./R_G18)
 		for i in range(10):
 			mask = (labels == i)
-			R_G16 = norm_scene[i] * radiance(lza_interp_grid_G16[mask],b_scene[i])
-			rad_interp_G16_corr[mask] /= R_G16
-			R_G18 = norm_scene[i] * radiance(lza_interp_grid_G18[mask],b_scene[i])
-			rad_interp_G18_corr[mask] /= R_G18
+			rad_interp_G16_corr[mask] = correct_radiance(rad_interp_G16_corr[mask], lza_interp_grid_G16[mask], b_scene[i], norm_scene[i])
+			rad_interp_G18_corr[mask] = correct_radiance(rad_interp_G18_corr[mask], lza_interp_grid_G18[mask], b_scene[i], norm_scene[i])
 
 		# Convert corrected radiances to BT
 		BT_G16 = radiance_to_brightness_temperature(rad_interp_G16_corr, planck_G16)

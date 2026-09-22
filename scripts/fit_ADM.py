@@ -26,6 +26,7 @@ from adm import (
 	radiance_quadratic_normalized as radiance_quad_norm,
 	radiance_quadratic_ratio as radiance_quad_ratio,
 )
+from adm_fitting import fit_adm_scene
 from netcdf_io import load_data, write_dataset
 
 mpl.rcParams["mathtext.default"] = 'regular'
@@ -188,19 +189,11 @@ if __name__ == '__main__':
 			#sigma = sigma[mask]
 			#bin_centers = bin_centers[mask]
 
-			# Fit ratio on all points
-			popt, pcov = curve_fit(radiance_lin_ratio,(lza_G16_scene,lza_G18_scene),rad_ratio_scene)
-			#popt, pcov = curve_fit(fitting_fct_1D,lza_G16_scene,rad_G16_scene)
-			perr = np.sqrt(np.diag(pcov))	
-			# Fit on binned data
-			#popt, pcov = curve_fit(fitting_fct_1D,bin_centers,means,sigma=sigma)
-			#perr = np.sqrt(np.diag(pcov))
-			# Determine normalization factor for the ADM to integrate to unity
-			norm_ADM = 1./(quad(radiance_integrand, 0, 90, args=(popt[0],))[0])
-			#print(norm_ADM)
+			# Fit ratio on all points, matching the shared ADM fitting routine
+			b_value, norm_ADM = fit_adm_scene(lza_G16_scene, lza_G18_scene, rad_G16_scene, rad_G18_scene)
+			popt = (b_value,)
 
-			# Fit for the normalization in 1D
-			#popt_norm, pcov_norm = curve_fit(radiance_lin_norm,(lza_G16_scene,np.full_like(lza_G16_scene,popt[0]),np.full_like(lza_G16_scene,popt[1])),rad_G16_scene)
+			# Fit for the normalization in 1D (diagnostic plot only; not saved)
 			popt_norm, pcov_norm = curve_fit(radiance_lin_norm,(x_var,np.full_like(x_var,popt[0])),y_var)
 			#popt_norm, pcov_norm = curve_fit(radiance_quad_norm,(x_var,np.full_like(x_var,popt[0]),np.full_like(x_var,popt[1])),y_var)
 			perr_norm = np.sqrt(np.diag(pcov_norm))	

@@ -5,48 +5,8 @@ import argparse
 from sklearn.preprocessing import PolynomialFeatures
 import psutil
 import os
+from broadband import cubic_regression
 from netcdf_io import load_data, write_dataset
-
-def cubic_regression(rad, coeff, intercept):
-
-	x0 = rad[:, 0]
-	x1 = rad[:, 1]
-	x2 = rad[:, 2]
-	x3 = rad[:, 3]
-	x4 = rad[:, 4]
-	x5 = rad[:, 5]
-	
-	x = [x0, x1, x2, x3, x4, x5]
-	
-	out = np.full(rad.shape[0], intercept, dtype=rad.dtype)
-	
-	k = 0
-	
-	# Linear
-	for i in range(6):
-		out += coeff[k] * x[i]
-		k += 1
-	
-	# Quadratic
-	for i in range(6):
-		xi = x[i]
-		
-		for j in range(i, 6):
-			out += coeff[k] * xi * x[j]
-			k += 1
-	
-	# Cubic
-	for i in range(6):
-		xi = x[i]
-		
-		for j in range(i, 6):
-			xij = xi * x[j]
-			
-			for l in range(j, 6):
-				out += coeff[k] * xij * x[l]
-				k += 1
-	
-	return out
 
 if __name__ == '__main__':
     
@@ -169,28 +129,7 @@ if __name__ == '__main__':
 	                   -3.12825477e-03,1.04778670e-01,-2.27570602e-01,7.11314751e-02,
 	                   1.17296322e-01,-6.87044855e-02,-1.42712364e-03]
 	intercept_quadratic = 56.29448115395326
-	coeff_cubic = [4.69962675e+00,1.62183406e+01,7.61262687e-01,-8.92166533e+00,
-	               -4.86682683e+00,-1.14231072e+01,-9.45069025e-02,2.50272570e-01,
-	               -6.50158635e-02,-2.75717730e-01,-2.60760940e-02,2.61120108e-01,
-	               -1.52914394e-01,1.53894060e-01,-4.17800377e-01,1.34917427e+00,
-	               -1.18213776e+00,-3.57863341e-02,2.01244030e-03,-2.27775285e-01,
-	               2.00477535e-01,1.35122229e+00,-3.38625494e+00,1.45998620e+00,
-	               1.33664170e+00,-3.39776272e-01,-1.42809106e-01,1.34300203e-04,
-	               -5.90140657e-04,5.23752905e-05,6.85399660e-04,-7.85379265e-05,
-	               -8.49371329e-05,-1.12610983e-03,-8.95732635e-05,-9.87184197e-04,
-	               3.26488292e-03,1.53438709e-04,1.54233887e-04,-8.07753393e-04,
-	               8.23816754e-04,-5.41931708e-05,5.54989968e-03,-1.15234035e-02,
-	               2.01203872e-03,4.83026715e-03,-1.93513714e-03,-5.30714915e-04,
-	               -5.90870290e-03,-1.42607367e-03,4.87879796e-02,-3.76451896e-02,
-	               9.61241946e-03,3.47400352e-04,3.55688764e-03,-8.14456940e-05,
-	               -1.92873252e-03,-1.08799800e-01,1.45713496e-01,-2.63262126e-02,
-	               -4.05851615e-02,1.82810953e-03,6.20333119e-03,9.08135558e-05,
-	               -1.11355453e-03,9.35698960e-04,-4.23572660e-04,1.61386994e-03,
-	               -8.46903041e-03,4.58617016e-03,4.59084130e-03,-2.15894325e-03,
-	               -2.58627281e-04,6.59718996e-02,-1.07547359e-01,6.20092029e-03,
-	               3.84030469e-02,2.54580565e-02,-1.21409230e-02,1.93717934e-03,
-	               -1.79004995e-02,6.84997236e-03,1.47793639e-04]
-	intercept_cubic = 384.61181077479637
+	# coeff_cubic/intercept_cubic now live in src/broadband.py and are applied via cubic_regression()
 
 
 #	coeff_linear = np.asarray([16.02115098,-0.80979908,3.08614319,3.56242094,1.92214979,9.03824266])
@@ -232,13 +171,13 @@ if __name__ == '__main__':
 	#Tbb_G16 = rad_G16 @ coeff_linear + intercept_linear
 	#Tbb_G16 = rad_G16_poly2 @ coeff_quadratic + intercept_quadratic
 	#Tbb_G16 = rad_G16_poly3 @ coeff_cubic + intercept_cubic
-	Tbb_G16 = cubic_regression(rad_G16,coeff_cubic,intercept_cubic)
+	Tbb_G16 = cubic_regression(rad_G16)
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 	flux_G16 = sigma*np.power(Tbb_G16,4)
 	#Tbb_G18 = rad_G18 @ coeff_linear + intercept_linear
 	#Tbb_G18 = rad_G18_poly2 @ coeff_quadratic + intercept_quadratic
 	#Tbb_G18 = rad_G18_poly3 @ coeff_cubic + intercept_cubic
-	Tbb_G18 = cubic_regression(rad_G18,coeff_cubic,intercept_cubic)
+	Tbb_G18 = cubic_regression(rad_G18)
 	flux_G18 = sigma*np.power(Tbb_G18,4)
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 	
