@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -130,6 +131,8 @@ if __name__ == '__main__':
 	parser.add_argument("-f", "--input_file", type=str, nargs="+", default="data/preprocessed_files/abi_pix1000_step5.nc")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	parser.add_argument("-n", "--n_components", type=int, default=10, help="Number of GMM components")
+	parser.add_argument("--n-components-file", type=str, default=None,
+		help="JSON file from find_nComponents.py; overrides -n with its selected n_components")
 	parser.add_argument("--use_pca", action="store_true", help="Enable PCA before GMM")
 	parser.add_argument("--pca_var", type=float, default=0.98, help="Cumulative variance to keep (e.g., 0.98)")
 	args = parser.parse_args()
@@ -137,6 +140,12 @@ if __name__ == '__main__':
 	input_file = args.input_file
 	lambda_center = args.lambda_center
 	n_components = args.n_components
+	if args.n_components_file:
+		selection = json.load(open(args.n_components_file))
+		if selection.get("n_components") is None:
+			raise SystemExit(f"{args.n_components_file} has no selected n_components (find_nComponents.py found no passing candidate)")
+		n_components = int(selection["n_components"])
+		print(f"Using n_components={n_components} from {args.n_components_file}")
 	use_pca = args.use_pca
 	pca_var = args.pca_var
 	

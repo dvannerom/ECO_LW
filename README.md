@@ -78,26 +78,45 @@ PYTHONPATH=src python scripts/find_nComponents.py \
 	--use-pca --min-components 6 --max-components 16 --max-points 100000
 ```
 
-The script writes a CSV and diagnostic plot. The four workflow-oriented
-criteria are quantified as follows:
+The script writes a CSV, a 4-panel diagnostic figure, a criteria heatmap, and a
+JSON selection file. Cheap diagnostics run for every candidate; a shortlist
+(smallest `--exact-shortlist-size` candidates passing the cheap criteria,
+default 5) is then re-evaluated with the exact production ADM fit
+(`src/adm_fitting.py`, matching `fit_ADM.py`/`radiance_to_flux.py`) and the
+exact cubic narrowband-to-broadband regression (`src/broadband.py`, matching
+`narrowband_to_broadband.py`).
+
+Selection criteria:
 
 - ADM residual plateau: relative reduction in held-out ADM radiance-ratio RMSE
 	between successive component counts; below 1% is the default plateau.
 - Scene occupancy: minimum held-out scene fraction; scenes below 0.5% are
 	flagged as sparse.
-- Cross-day stability: Jensen-Shannon divergence of scene occupancies and the
-	mean standardized feature-centroid shift on validation days. Repeated
-	bootstrap fits also report the adjusted Rand index (`ari_mean`, `ari_min`,
-	`ari_std`).
-- Correction benefit: fractional reduction in G16-G18 flux spread after
-	train-fitted ADM correction, using the Stefan-Boltzmann flux proxy.
+- Cross-day stability: Jensen-Shannon divergence of scene occupancies, the
+	standardized feature-centroid shift on validation days, and the minimum
+	adjusted Rand index (`ari_min`) across `--stability-repeats` bootstrap
+	refits (default 3).
+- Angular coverage: minimum fraction of occupied 10-degree viewing-angle bins
+	per scene.
+- ADM coverage: worst-scene held-out ADM ratio RMSE stays below a threshold.
+- Exact correction benefit: fractional reduction in the *exact* broadband
+	G16-G18 flux spread, evaluated only for shortlisted candidates.
 
-Additional scalable diagnostics are computed on bounded samples: held-out
-silhouette score, worst-channel and worst-scene ADM residuals, and the minimum
-fraction of occupied 10-degree viewing-angle bins per scene. Silhouette uses
-`--silhouette-sample-size` points (default 5,000), while repeated-fit ARI uses
-`--stability-repeats` bootstrap fits (default 3), avoiding the quadratic cost of
-a full silhouette calculation.
+A candidate is marked `all_criteria` only when it is shortlisted and passes
+all six criteria. The smallest such candidate is written to
+`--selection-output` (default `data/models/selected_n_components.json`), which
+`train_GMM.py --n-components-file <path>` reads to override `-n` automatically:
+
+```bash
+PYTHONPATH=src python scripts/train_GMM.py --input_file ... \
+	--n-components-file data/models/selected_n_components.json --use_pca
+```
+
+AIC, BIC, silhouette, ARI mean, the training-set minimum scene fraction, and
+raw/corrected brightness-temperature spreads were dropped as redundant or
+misleading for this decision (see `--help` for remaining thresholds). ICL is
+computed on the training set (matching its standard definition), not the
+held-out set.
 
 A candidate is marked `all_criteria` only when all four thresholds pass. AIC,
 BIC, held-out likelihood, ICL, posterior entropy, and the raw/corrected BT and
