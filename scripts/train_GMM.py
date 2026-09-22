@@ -12,7 +12,7 @@ import time
 import math
 import argparse
 import joblib
-from netcdf_io import load_data
+from scene_features import build_scene_features
 
 def heatmap(data, row_labels, col_labels, ax=None, cbar_kw=None, cbarlabel="", **kwargs):
 	"""
@@ -125,77 +125,6 @@ def annotate_heatmap(im, data=None, valfmt="{x:.2f}", textcolors=("black", "whit
 	
 	return texts
 
-def build_arrays(input_file):
-	# -----------------------------
-	# Retrieve data
-	# -----------------------------
-	dataset = load_data(input_file)
-	#width = npzfile['arr_0']
-	#height = npzfile['arr_1']
-	width = dataset['width']
-	height = dataset['height']
-	lat_interp_grid = dataset['lat_interp_grid']
-	lon_interp_grid = dataset['lon_interp_grid']
-
-	lza_interp_grid_G16 = np.cos(np.radians(dataset['lza_G16_interp'])).flatten()
-	lza_interp_grid_G18 = np.cos(np.radians(dataset['lza_G18_interp'])).flatten()
-
-	BT_C08_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 0].flatten()
-	BT_C11_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 3].flatten()
-	BT_C12_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 4].flatten()
-	BT_C14_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 6].flatten()
-	BT_C15_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 7].flatten()
-	BT_C16_interp_G16 = dataset['BT_G16_interp'][::3, ::3, 8].flatten()
-
-	BT_C08_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 0].flatten()
-	BT_C11_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 3].flatten()
-	BT_C12_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 4].flatten()
-	BT_C14_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 6].flatten()
-	BT_C15_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 7].flatten()
-	BT_C16_interp_G18 = dataset['BT_G18_interp'][::3, ::3, 8].flatten()
-
-	# Define averages
-	BT_C08_av = (BT_C08_interp_G16 + BT_C08_interp_G18)/2
-	BT_C11_av = (BT_C11_interp_G16 + BT_C11_interp_G18)/2
-	BT_C12_av = (BT_C12_interp_G16 + BT_C12_interp_G18)/2
-	BT_C14_av = (BT_C14_interp_G16 + BT_C14_interp_G18)/2
-	BT_C15_av = (BT_C15_interp_G16 + BT_C15_interp_G18)/2
-	BT_C16_av = (BT_C16_interp_G16 + BT_C16_interp_G18)/2
-	BT_diff1 = BT_C14_av - BT_C11_av
-	BT_diff2 = BT_C14_av - BT_C15_av
-	BT_diff3 = BT_C14_av - BT_C08_av
-	BT_diff4 = BT_C14_av - BT_C16_av
-	
-	BT = np.stack([
-	    BT_C08_av, BT_C11_av, BT_C12_av, BT_C14_av, BT_C15_av, BT_C16_av,
-	    BT_diff1, BT_diff2, BT_diff3, BT_diff4
-	], axis=-1).reshape(-1, 10)
-	
-	print(BT.shape)
-
-	# Mask invalids
-	BT_mask = np.stack([
-	    BT_C08_interp_G16, BT_C11_interp_G16, BT_C12_interp_G16, BT_C14_interp_G16, BT_C15_interp_G16, BT_C16_interp_G16,
-	    BT_C08_interp_G18, BT_C11_interp_G18, BT_C12_interp_G18, BT_C14_interp_G18, BT_C15_interp_G18, BT_C16_interp_G18
-	], axis=-1)
-	
-	mask = (
-	    (BT_mask[:, 0] > 0) & (BT_mask[:, 1] > 0) & (BT_mask[:, 2] > 0) & (BT_mask[:, 3] > 0) &
-	    (BT_mask[:, 4] > 0) & (BT_mask[:, 5] > 0) & (BT_mask[:, 6] > 0) & (BT_mask[:, 7] > 0) &
-	    (BT_mask[:, 8] > 0) & (BT_mask[:, 9] > 0) & (BT_mask[:, 10] > 0) & (BT_mask[:, 11] > 0) &
-	    (BT_mask[:, 0] < 1e03) & (BT_mask[:, 1] < 1e03) & (BT_mask[:, 2] < 1e03) & (BT_mask[:, 3] < 1e03) &
-	    (BT_mask[:, 4] < 1e03) & (BT_mask[:, 5] < 1e03) & (BT_mask[:, 6] < 1e03) & (BT_mask[:, 7] < 1e03) &
-	    (BT_mask[:, 8] < 1e03) & (BT_mask[:, 9] < 1e03) & (BT_mask[:, 10] < 1e03) & (BT_mask[:, 11] < 1e03) &
-	    ~np.isnan(BT_mask[:, 0]) & ~np.isnan(BT_mask[:, 1]) & ~np.isnan(BT_mask[:, 2]) & ~np.isnan(BT_mask[:, 3]) &
-	    ~np.isnan(BT_mask[:, 4]) & ~np.isnan(BT_mask[:, 5]) & ~np.isnan(BT_mask[:, 6]) & ~np.isnan(BT_mask[:, 7]) &
-	    ~np.isnan(BT_mask[:, 8]) & ~np.isnan(BT_mask[:, 9]) & ~np.isnan(BT_mask[:, 10]) & ~np.isnan(BT_mask[:, 11])
-	)
-	
-	BT_nozeros = BT[mask]
-	print(BT_nozeros.shape)
-
-	return BT_nozeros
-
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
 	parser.add_argument("-f", "--input_file", type=str, nargs="+", default="data/preprocessed_files/abi_pix1000_step5.nc")
@@ -216,7 +145,7 @@ if __name__ == '__main__':
 	BT_arrays = []
 
 	for f in input_file:	
-		BT_arrays.append(build_arrays(f))
+		BT_arrays.append(build_scene_features(f, pixel_step=3)[0])
 
 	BT_merged = np.concatenate(BT_arrays, axis=0)
 

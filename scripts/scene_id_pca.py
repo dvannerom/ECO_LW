@@ -20,104 +20,8 @@ import time
 import math
 import argparse
 import joblib
-from netcdf_io import load_data, write_dataset
-
-def build_arrays(input_file, chunk_rows=2048):
-	"""Build valid-pixel feature arrays in manageable row chunks.
-
-	This avoids materializing several full-scene float arrays simultaneously,
-	which can exhaust memory for large GOES granules.
-	"""
-	dataset = load_data(
-		input_file,
-		variable_names=(
-			"lat_interp_grid",
-			"lon_interp_grid",
-			"BT_G16_interp",
-			"BT_G18_interp",
-		),
-	)
-	lat_interp_grid = dataset['lat_interp_grid']
-	lon_interp_grid = dataset['lon_interp_grid']
-
-	ny, nx = lat_interp_grid.shape
-	flat_mask = np.zeros((ny, nx), dtype=bool)
-	valid_features = []
-	valid_positions = []
-
-	for y0 in range(0, ny, chunk_rows):
-		y1 = min(y0 + chunk_rows, ny)
-		BT_G16_block = dataset['BT_G16_interp'][y0:y1]
-		BT_G18_block = dataset['BT_G18_interp'][y0:y1]
-
-		# Pull the channels used to define the scene features.
-		BT_C08_interp_G16 = BT_G16_block[:, :, 0].astype(np.float32, copy=False)
-		BT_C11_interp_G16 = BT_G16_block[:, :, 3].astype(np.float32, copy=False)
-		BT_C12_interp_G16 = BT_G16_block[:, :, 4].astype(np.float32, copy=False)
-		BT_C14_interp_G16 = BT_G16_block[:, :, 6].astype(np.float32, copy=False)
-		BT_C15_interp_G16 = BT_G16_block[:, :, 7].astype(np.float32, copy=False)
-		BT_C16_interp_G16 = BT_G16_block[:, :, 8].astype(np.float32, copy=False)
-
-		BT_C08_interp_G18 = BT_G18_block[:, :, 0].astype(np.float32, copy=False)
-		BT_C11_interp_G18 = BT_G18_block[:, :, 3].astype(np.float32, copy=False)
-		BT_C12_interp_G18 = BT_G18_block[:, :, 4].astype(np.float32, copy=False)
-		BT_C14_interp_G18 = BT_G18_block[:, :, 6].astype(np.float32, copy=False)
-		BT_C15_interp_G18 = BT_G18_block[:, :, 7].astype(np.float32, copy=False)
-		BT_C16_interp_G18 = BT_G18_block[:, :, 8].astype(np.float32, copy=False)
-
-		BT_C08_av = (BT_C08_interp_G16 + BT_C08_interp_G18) / 2.0
-		BT_C11_av = (BT_C11_interp_G16 + BT_C11_interp_G18) / 2.0
-		BT_C12_av = (BT_C12_interp_G16 + BT_C12_interp_G18) / 2.0
-		BT_C14_av = (BT_C14_interp_G16 + BT_C14_interp_G18) / 2.0
-		BT_C15_av = (BT_C15_interp_G16 + BT_C15_interp_G18) / 2.0
-		BT_C16_av = (BT_C16_interp_G16 + BT_C16_interp_G18) / 2.0
-		BT_diff1 = BT_C14_av - BT_C11_av
-		BT_diff2 = BT_C14_av - BT_C15_av
-		BT_diff3 = BT_C14_av - BT_C08_av
-		BT_diff4 = BT_C14_av - BT_C16_av
-
-		BT_mask = np.stack([
-			BT_C08_interp_G16, BT_C11_interp_G16, BT_C12_interp_G16, BT_C14_interp_G16,
-			BT_C15_interp_G16, BT_C16_interp_G16, BT_C08_interp_G18, BT_C11_interp_G18,
-			BT_C12_interp_G18, BT_C14_interp_G18, BT_C15_interp_G18, BT_C16_interp_G18,
-		], axis=-1)
-
-		block_mask = (
-			(BT_mask[:, :, 0] > 0) & (BT_mask[:, :, 1] > 0) & (BT_mask[:, :, 2] > 0) & (BT_mask[:, :, 3] > 0) &
-			(BT_mask[:, :, 4] > 0) & (BT_mask[:, :, 5] > 0) & (BT_mask[:, :, 6] > 0) & (BT_mask[:, :, 7] > 0) &
-			(BT_mask[:, :, 8] > 0) & (BT_mask[:, :, 9] > 0) & (BT_mask[:, :, 10] > 0) & (BT_mask[:, :, 11] > 0) &
-			(BT_mask[:, :, 0] < 1e03) & (BT_mask[:, :, 1] < 1e03) & (BT_mask[:, :, 2] < 1e03) & (BT_mask[:, :, 3] < 1e03) &
-			(BT_mask[:, :, 4] < 1e03) & (BT_mask[:, :, 5] < 1e03) & (BT_mask[:, :, 6] < 1e03) & (BT_mask[:, :, 7] < 1e03) &
-			(BT_mask[:, :, 8] < 1e03) & (BT_mask[:, :, 9] < 1e03) & (BT_mask[:, :, 10] < 1e03) & (BT_mask[:, :, 11] < 1e03) &
-			~np.isnan(BT_mask[:, :, 0]) & ~np.isnan(BT_mask[:, :, 1]) & ~np.isnan(BT_mask[:, :, 2]) & ~np.isnan(BT_mask[:, :, 3]) &
-			~np.isnan(BT_mask[:, :, 4]) & ~np.isnan(BT_mask[:, :, 5]) & ~np.isnan(BT_mask[:, :, 6]) & ~np.isnan(BT_mask[:, :, 7]) &
-			~np.isnan(BT_mask[:, :, 8]) & ~np.isnan(BT_mask[:, :, 9]) & ~np.isnan(BT_mask[:, :, 10]) & ~np.isnan(BT_mask[:, :, 11])
-		)
-
-		if not np.any(block_mask):
-			continue
-
-		rows, cols = np.nonzero(block_mask)
-		global_rows = y0 + rows
-		global_cols = cols
-		flat_idx = global_rows * nx + global_cols
-
-		BT_chunk = np.stack([
-			BT_C08_av[block_mask], BT_C11_av[block_mask], BT_C12_av[block_mask], BT_C14_av[block_mask],
-			BT_C15_av[block_mask], BT_C16_av[block_mask], BT_diff1[block_mask], BT_diff2[block_mask],
-			BT_diff3[block_mask], BT_diff4[block_mask],
-		], axis=-1).astype(np.float32, copy=False)
-
-		flat_mask[global_rows, global_cols] = True
-		valid_features.append(BT_chunk)
-		valid_positions.append(flat_idx)
-
-	if not valid_features:
-		raise ValueError(f"No valid pixels found in {input_file}")
-
-	BT_nozeros = np.concatenate(valid_features, axis=0)
-	valid_flat = np.concatenate(valid_positions, axis=0)
-	return BT_nozeros, valid_flat, flat_mask, lat_interp_grid, lon_interp_grid
+from netcdf_io import write_dataset
+from scene_features import build_scene_features
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
@@ -135,7 +39,7 @@ if __name__ == '__main__':
 	res = input_file.split("/")[-1].split(".")[0].split("_")[2]
 		
 	# Retrieve data
-	BT_nozeros, valid_flat, mask, lat_interp_grid, lon_interp_grid = build_arrays(input_file)
+	BT_nozeros, valid_flat, mask, lat_interp_grid, lon_interp_grid = build_scene_features(input_file)
 
 	# Retrieve model
 	pipeline = joblib.load(model)
