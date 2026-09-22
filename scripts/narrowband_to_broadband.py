@@ -267,45 +267,6 @@ if __name__ == '__main__':
 	#flux_G18[(flux_G18<50) | (flux_G18>1e03) | (lza_interp_grid_G16.ravel()>70) | (lza_interp_grid_G18.ravel()>70)] = np.nan
 	flux_G16 = flux_G16.reshape(shape_x,shape_y)
 	flux_G18 = flux_G18.reshape(shape_x,shape_y)
-	diff = flux_G16-flux_G18
-	print(str(np.nanstd(diff.ravel()))+"\t"+str(np.nanstd(diff.ravel()/flux_G16.ravel()))+"\t"+str(np.nanstd(diff.ravel()/flux_G18.ravel())))
-
-	#plt.hist(diff.ravel(),100)
-	#plt.savefig("figures/flux_diff.png")
-	#plt.close()
-
-	max_flux = 380#max(np.nanmax(flux_G16),np.nanmax(flux_G18))
-	min_flux = 80#min(np.nanmin(flux_G16[flux_G16>0]),np.nanmin(flux_G18[flux_G18>0]))
-	print(min_flux,max_flux)
-	max_diff = 40#max(np.nanmax(diff),-np.nanmin(diff))
-	print(max_diff)
-
-	## Draw labels on original map
-	#lon_min = -163
-	#lon_max = -49
-	#fig, axs = plt.subplots(1, 3, figsize=(22, 8), subplot_kw={'projection': ccrs.Sinusoidal(central_longitude=lambda_center)})
-	#pc0 = axs[0].pcolormesh(lon_interp_grid, lat_interp_grid, flux_G16, cmap='jet', transform=ccrs.PlateCarree(), vmin=min_flux, vmax=max_flux)
-	#axs[0].set_global()
-	#axs[0].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-	#axs[0].coastlines()
-	#axs[0].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-	#cbar0 = fig.colorbar(pc0, ax=axs[0], orientation="vertical")
-	#pc1 = axs[1].pcolormesh(lon_interp_grid, lat_interp_grid, flux_G18, cmap='jet', transform=ccrs.PlateCarree(), vmin=min_flux, vmax=max_flux)
-	#axs[1].set_global()
-	#axs[1].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-	#axs[1].coastlines()
-	#axs[1].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-	#cbar1 = fig.colorbar(pc1, ax=axs[1], orientation="vertical")
-	#pc2 = axs[2].pcolormesh(lon_interp_grid, lat_interp_grid, diff, cmap='bwr', transform=ccrs.PlateCarree(), vmin=-max_diff, vmax=max_diff)
-	#axs[2].set_global()
-	#axs[2].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-	#axs[2].coastlines()
-	#axs[2].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-	#cbar2 = fig.colorbar(pc2, ax=axs[2], orientation="vertical")
-	##cbar.set_label("Scene ID")
-	#fig.tight_layout()
-	#plt.savefig("figures/broadband_flux_"+str(day)+"_res"+str(res)+"km.png")
-	#plt.close()
 
 	write_dataset(
 		"data/broadband_flux/broadband_flux_"+str(day)+"_res"+str(res)+"km.nc",

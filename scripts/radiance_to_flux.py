@@ -115,64 +115,6 @@ if __name__ == '__main__':
 		#plt.savefig("figures/rad_G18_"+str(res)+"_C"+str(channel)+".png")
 		#plt.close()
 
-		#rad_interp_G16[(rad_interp_G16<=0) | (rad_interp_G16>1e03) | (lon_interp_grid>-75) | (lon_interp_grid<-135)] = np.nan
-		#rad_interp_G18[(rad_interp_G18<=0) | (rad_interp_G18>1e03) | (lon_interp_grid>-75) | (lon_interp_grid<-135)] = np.nan
-		#rad_interp_G16_corr[(rad_interp_G16_corr<=0) | (rad_interp_G16_corr>1e03) | (lon_interp_grid>-75) | (lon_interp_grid<-135)] = np.nan
-		#rad_interp_G18_corr[(rad_interp_G18_corr<=0) | (rad_interp_G18_corr>1e03) | (lon_interp_grid>-75) | (lon_interp_grid<-135)] = np.nan
-		diff = rad_interp_G16 - rad_interp_G18
-		diff_corr = rad_interp_G16_corr - rad_interp_G18_corr
-		#mask1 = (np.abs(diff)<200)
-		#mask2 = (np.abs(diff)<200) & (lza_interp_grid_G16<75) & (lza_interp_grid_G18<75)
-		#mask1_corr = (np.abs(diff_corr)<200)
-		#mask2_corr = (np.abs(diff_corr)<200) & (lza_interp_grid_G16<75) & (lza_interp_grid_G18<75)
-		#print(str(np.nanstd(diff/rad_interp_G16))+"\t"+str(np.nanstd(diff_corr/rad_interp_G16_corr)))
-
-		#bins = np.linspace(-200,200,100)
-		#plt.hist(diff_corr,bins)
-		#plt.yscale('log')
-		#plt.savefig("figures/radiance_to_flux_diff_CH"+str(channel)+".png")
-		#plt.close()
-
-		#max_diff = max(np.nanmax(diff),-np.nanmin(diff))
-		#max_diff_corr = max(np.nanmax(diff_corr),-np.nanmin(diff_corr))
-		#max_glob = max(max_diff,max_diff_corr)
-		del diff, diff_corr
-
-		## Delete unnecessary arrays (for memory efficiency)
-		#del rad_interp_G16
-		#del rad_interp_G18
-		#
-		#del rad_interp_G16_corr
-		#del rad_interp_G18_corr
-		#
-		#del lza_interp_grid_G16
-		#del lza_interp_grid_G18
-		#
-		#del labels
-		#
-		#gc.collect()
-
-		## Draw labels on original map
-		#lon_min = -153
-		#lon_max = -59
-		#fig, axs = plt.subplots(1, 2, figsize=(14, 8), subplot_kw={'projection': ccrs.Sinusoidal(central_longitude=lambda_center)})
-		#pc0 = axs[0].pcolormesh(lon_interp_grid, lat_interp_grid, diff, cmap='bwr', transform=ccrs.PlateCarree(), vmin=-40, vmax=40)
-		#axs[0].set_global()
-		#axs[0].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-		#axs[0].coastlines()
-		#axs[0].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-		#cbar = fig.colorbar(pc0, ax=axs[0], orientation="vertical")
-		#pc1 = axs[1].pcolormesh(lon_interp_grid, lat_interp_grid, diff_corr, cmap='bwr', transform=ccrs.PlateCarree(), vmin=-40, vmax=40)
-		#axs[1].set_global()
-		#axs[1].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-		#axs[1].coastlines()
-		#axs[1].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-		#cbar = fig.colorbar(pc1, ax=axs[1], orientation="vertical")
-		##cbar.set_label("Scene ID")
-		#fig.tight_layout()
-		#plt.savefig("figures/radiance_to_flux_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+".png")
-		#plt.close()
-
 		write_dataset(
 			"data/narrowband_flux/narrowband_flux_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+".nc",
 			{

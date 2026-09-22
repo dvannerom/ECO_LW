@@ -52,6 +52,12 @@ python plot_scene_id.py --input data/scene_id/scene_id_271_res2km_10comp.nc
 
 # Plot an ADM fit for a specific day/channel/scene pair
 python plot_fit_ADM.py --day 271 --resolution 2 --channel 0 --scene 0
+
+# Compare G16-G18 radiance differences before and after ADM correction
+python plot_radiance_difference.py --day 271 --resolution 2 --channel 0
+
+# Plot G16, G18, and G16-G18 broadband flux
+python plot_broadband_flux.py --day 271 --resolution 2
 ```
 
 These scripts read the saved NetCDF products and create PNG outputs in the
