@@ -18,9 +18,9 @@ from netcdf_io import load_data
 
 def plot_scene_id(scene_file, output_dir="figures/scene_id", lambda_center=-106):
     dataset = load_data(scene_file)
-    labels = dataset["labels"]
     lat = dataset["lat"]
     lon = dataset["lon"]
+    labels = dataset.get("sorted_labels", dataset["labels"])
     n_components = int(np.nanmax(labels)) + 1
 
     scene_map = labels.reshape(lat.shape[0], lat.shape[1])
@@ -41,6 +41,7 @@ def plot_scene_id(scene_file, output_dir="figures/scene_id", lambda_center=-106)
     axs.set_ylabel("Latitude")
     cbar = fig.colorbar(pc, ax=axs, orientation="vertical")
     cbar.set_label("Scene ID")
+    cbar.set_ticks(range(n_components))
     fig.tight_layout()
 
     os.makedirs(output_dir, exist_ok=True)
