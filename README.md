@@ -66,6 +66,44 @@ python plot_monthly_flux.py --input data/monthly/monthly_flux_res2km.nc
 These scripts read the saved NetCDF products and create PNG outputs in the
 `figures/` tree without rerunning the expensive data-processing steps.
 
+## GMM component selection
+
+Use `find_nComponents.py` to compare candidate scene counts before changing
+`scene_components` in `config.yaml`:
+
+```bash
+PYTHONPATH=src python scripts/find_nComponents.py \
+	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
+	--validation-inputs data/preprocessed_files/abi_271_res2km_step1.nc \
+	--use-pca --min-components 6 --max-components 16 --max-points 100000
+```
+
+The script writes a CSV and diagnostic plot. The four workflow-oriented
+criteria are quantified as follows:
+
+- ADM residual plateau: relative reduction in held-out ADM radiance-ratio RMSE
+	between successive component counts; below 1% is the default plateau.
+- Scene occupancy: minimum held-out scene fraction; scenes below 0.5% are
+	flagged as sparse.
+- Cross-day stability: Jensen-Shannon divergence of scene occupancies and the
+	mean standardized feature-centroid shift on validation days. Repeated
+	bootstrap fits also report the adjusted Rand index (`ari_mean`, `ari_min`,
+	`ari_std`).
+- Correction benefit: fractional reduction in G16-G18 flux spread after
+	train-fitted ADM correction, using the Stefan-Boltzmann flux proxy.
+
+Additional scalable diagnostics are computed on bounded samples: held-out
+silhouette score, worst-channel and worst-scene ADM residuals, and the minimum
+fraction of occupied 10-degree viewing-angle bins per scene. Silhouette uses
+`--silhouette-sample-size` points (default 5,000), while repeated-fit ARI uses
+`--stability-repeats` bootstrap fits (default 3), avoiding the quadratic cost of
+a full silhouette calculation.
+
+A candidate is marked `all_criteria` only when all four thresholds pass. AIC,
+BIC, held-out likelihood, ICL, posterior entropy, and the raw/corrected BT and
+flux spreads are also retained in the CSV for inspection. Candidate outputs do
+not overwrite production models, labels, ADMs, or flux products.
+
 For a SLURM cluster, add a cluster profile or use Snakemake's executor plugin,
 for example:
 
