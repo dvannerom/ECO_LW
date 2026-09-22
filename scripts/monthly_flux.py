@@ -131,39 +131,6 @@ if __name__ == '__main__':
 	lat_interp_grid = reference["lat_interp_grid"]
 	lon_interp_grid = reference["lon_interp_grid"]
 
-	if not no_plot:
-		import matplotlib.pyplot as plt
-		import cartopy.crs as ccrs
-
-		# Draw labels on original map
-		min_flux = 150
-		max_flux = 350
-		max_diff = 25
-		lon_min = -153
-		lon_max = -59
-		fig, axs = plt.subplots(1, 3, figsize=(22, 8), subplot_kw={'projection': ccrs.Sinusoidal(central_longitude=lambda_center)})
-		pc0 = axs[0].pcolormesh(lon_interp_grid, lat_interp_grid, flux_G16_monthly, cmap='jet', transform=ccrs.PlateCarree(), vmin=min_flux, vmax=max_flux)
-		axs[0].set_global()
-		axs[0].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-		axs[0].coastlines()
-		axs[0].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-		fig.colorbar(pc0, ax=axs[0], orientation="vertical")
-		pc1 = axs[1].pcolormesh(lon_interp_grid, lat_interp_grid, flux_G18_monthly, cmap='jet', transform=ccrs.PlateCarree(), vmin=min_flux, vmax=max_flux)
-		axs[1].set_global()
-		axs[1].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-		axs[1].coastlines()
-		axs[1].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-		fig.colorbar(pc1, ax=axs[1], orientation="vertical")
-		pc2 = axs[2].pcolormesh(lon_interp_grid, lat_interp_grid, diff, cmap='jet', transform=ccrs.PlateCarree(), vmin=0, vmax=20)
-		axs[2].set_global()
-		axs[2].set_extent([lon_min, lon_max, -90, 90], crs=ccrs.PlateCarree())
-		axs[2].coastlines()
-		axs[2].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
-		fig.colorbar(pc2, ax=axs[2], orientation="vertical")
-		fig.tight_layout()
-		os.makedirs("figures", exist_ok=True)
-		plt.savefig("figures/broadband_flux_monthly_res"+str(res)+"km.png")
-
 	os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
 	write_dataset(
 		output_file,

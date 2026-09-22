@@ -58,6 +58,9 @@ python plot_radiance_difference.py --day 271 --resolution 2 --channel 0
 
 # Plot G16, G18, and G16-G18 broadband flux
 python plot_broadband_flux.py --day 271 --resolution 2
+
+# Plot monthly mean G16 and G18 flux and their difference variability
+python plot_monthly_flux.py --input data/monthly/monthly_flux_res2km.nc
 ```
 
 These scripts read the saved NetCDF products and create PNG outputs in the
