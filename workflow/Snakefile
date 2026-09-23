@@ -14,8 +14,8 @@ RESOLUTION = int(config["resolution_km"])
 STEP = int(config["preprocess_step"])
 SCENE_COMPONENTS = int(selected_n_components)
 SELECTED_N_COMPONENTS_FILE = config["selected_n_components_file"]
-MODEL = f"data/models/gmm_pipeline_merged_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.joblib"
 TRAINING_FILES = config["training_files"]
+MODEL = f"data/models/gmm_pipeline_merged_{len(TRAINING_FILES)}files_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.joblib"
 
 
 def preprocessed(day):

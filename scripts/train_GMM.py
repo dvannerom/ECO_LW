@@ -138,6 +138,8 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 	
 	input_file = args.input_file
+	if isinstance(input_file, str):
+		input_file = [input_file]
 	lambda_center = args.lambda_center
 	n_components = args.n_components
 	if args.n_components_file:
@@ -239,7 +241,7 @@ if __name__ == '__main__':
 		plt.savefig(f"figures/scene_id/pca_loadings_merged_2km.png", dpi=150)
 		plt.close(fig)
 
-	suffix = f"merged_res2km_{int(n_components)}comp"
+	suffix = f"merged_{len(input_file)}files_res2km_{int(n_components)}comp"
 
 	# -----------------------------
 	# Save model

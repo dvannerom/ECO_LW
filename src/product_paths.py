@@ -18,5 +18,5 @@ def scene_id_path(day, resolution, n_components):
     return f"data/scene_id/scene_id_{day}_res{resolution}km_{n_components}comp.nc"
 
 
-def model_path(resolution, n_components):
-    return f"data/models/gmm_pipeline_merged_res{resolution}km_{n_components}comp.joblib"
+def model_path(resolution, n_components, n_training_files=1):
+    return f"data/models/gmm_pipeline_merged_{n_training_files}files_res{resolution}km_{n_components}comp.joblib"

@@ -34,7 +34,7 @@ For the production workflow, plotting is explicitly disabled in the compute step
 
 ```bash
 python scene_id_pca.py --input_file data/preprocessed_files/abi_271_res2km_step1.nc \
-	--model data/models/gmm_pipeline_merged_res2km_5comp.joblib --lambda_center -106 --no-plot
+	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib --lambda_center -106 --no-plot
 
 python fit_ADM.py --day 271 --resolution 2 --n-components 5 --no-plot
 ```
@@ -52,7 +52,7 @@ python plot_scene_id.py --input data/scene_id/scene_id_271_res2km_5comp.nc
 
 # Plot BT and BTD centroids from an existing GMM and its training files
 PYTHONPATH=src python plotting/plot_scene_centroids.py \
-	--model data/models/gmm_pipeline_merged_res2km_5comp.joblib \
+	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib \
 	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
 	--label-order c14_btd14_08
 
