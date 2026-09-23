@@ -19,6 +19,7 @@ from adm import (
     radiance_linear_ratio as radiance_lin_ratio,
 )
 from netcdf_io import load_data
+from product_paths import scene_id_path
 
 
 def plot_fit_adm(data_file, scene_file, channel, scene, output_dir="figures/ADM"):
@@ -72,11 +73,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create ADM diagnostic plots offline from saved scene outputs.')
     parser.add_argument('-d', '--day', type=int, required=True, help='Day index')
     parser.add_argument('-r', '--resolution', type=int, default=2, help='Grid resolution in km')
+    parser.add_argument('--n-components', type=int, required=True, help='Number of scene components')
     parser.add_argument('-c', '--channel', type=int, required=True, help='Channel index (0-5)')
     parser.add_argument('-s', '--scene', type=int, required=True, help='Scene class index')
     parser.add_argument('--output-dir', type=str, default='figures/ADM', help='Directory for output plots')
     args = parser.parse_args()
 
     data_file = f'data/preprocessed_files/abi_{args.day}_res{args.resolution}km_step1.nc'
-    scene_file = f'data/scene_id/scene_id_{args.day}_res{args.resolution}km_10comp.nc'
+    scene_file = scene_id_path(args.day, args.resolution, args.n_components)
     plot_fit_adm(data_file, scene_file, args.channel, args.scene, args.output_dir)

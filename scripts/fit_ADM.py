@@ -28,6 +28,7 @@ from adm import (
 )
 from adm_fitting import fit_adm_scene
 from netcdf_io import load_data, write_dataset
+from product_paths import scene_id_path
 
 mpl.rcParams["mathtext.default"] = 'regular'
 
@@ -36,6 +37,7 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="sample argument parser")
 	parser.add_argument("-d","--day", type=int, default=245)
 	parser.add_argument("-r","--resolution", type=int, default=2)
+	parser.add_argument("--n-components", type=int, required=True)
 	parser.add_argument("--no-plot", action="store_true", help="Skip plotting during fit; generate plots offline with plot_fit_ADM.py")
 	#parser.add_argument("-c","--channel", type=int, default=0)
 	#parser.add_argument("-s","--scene", type=int, default=0)
@@ -43,11 +45,12 @@ if __name__ == '__main__':
 
 	day = args.day
 	res = args.resolution	
+	n_components = args.n_components
 	#channel = args.channel
 	#scene = args.scene
 
 	data_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc"
-	scene_file = "data/scene_id/scene_id_"+str(day)+"_res"+str(res)+"km_10comp.nc"
+	scene_file = scene_id_path(day, res, n_components)
 
 	#res = data_file.split("/")[-1].split(".")[0].split("_")[1]
 
@@ -136,7 +139,7 @@ if __name__ == '__main__':
 	#    ~np.isnan(rad_mask[:, 8]) & ~np.isnan(rad_mask[:, 9]) & ~np.isnan(rad_mask[:, 10]) & ~np.isnan(rad_mask[:, 11])
 	#)
 	for channel, source_channel in enumerate(channel_indices):
-		for scene in range(10):
+		for scene in range(n_components):
 			rad_G16 = rad_G16_flat[:,source_channel][mask_rad]#[mask & mask_rad]
 			rad_G18 = rad_G18_flat[:,source_channel][mask_rad]#[mask & mask_rad]
 			#npzfile_G16 = np.load(file_G16)

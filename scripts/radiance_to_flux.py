@@ -12,6 +12,7 @@ import gc
 from netcdf_io import load_data, write_dataset
 from adm_fitting import correct_radiance
 from radiometry import radiance_to_brightness_temperature
+from product_paths import scene_id_path
 
 
 ABI_CHANNELS = (0, 3, 4, 6, 7, 8)
@@ -28,17 +29,19 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="sample argument parser")
 	parser.add_argument("-d","--day", type=int, default=245)
 	parser.add_argument("-r","--resolution", type=int, default=2)
+	parser.add_argument("--n-components", type=int, required=True)
 	#parser.add_argument("-c","--channel", type=int, default=0)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	args = parser.parse_args()
 
 	day = args.day	
 	res = args.resolution
+	n_components = args.n_components
 	#channel = args.channel
 	lambda_center = args.lambda_center
 
 	radiance_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc"
-	scene_file = "data/scene_id/scene_id_"+str(day)+"_res"+str(res)+"km_10comp.nc"
+	scene_file = scene_id_path(day, res, n_components)
 
 	# Open the product lazily; read only the current channel inside the loop.
 	radiance_data = xr.open_dataset(radiance_file, engine="netcdf4", cache=False)
@@ -63,7 +66,7 @@ if __name__ == '__main__':
 		b_scene = []
 		norm_scene = []
 		
-		for scene in range(10):
+		for scene in range(n_components):
 			adm = load_data(
 			    f"data/ADM/ADM_{day}_res{res}km_C{channel}_scene{scene}.nc"
 			)
@@ -92,12 +95,12 @@ if __name__ == '__main__':
 		# Convert G16 and G18 radiances to narrowband fluxes
 		rad_interp_G16_corr = rad_interp_G16.copy()
 		rad_interp_G18_corr = rad_interp_G18.copy()
-		#for i in range(10):
+		#for i in range(n_components):
 		#	R_G16 = norm_scene[i]*radiance(lza_interp_grid_G16[labels==i],b_scene[i])
 		#	rad_interp_G16_corr[labels==i] *= (1./R_G16)
 		#	R_G18 = norm_scene[i]*radiance(lza_interp_grid_G18[labels==i],b_scene[i])
 		#	rad_interp_G18_corr[labels==i] *= (1./R_G18)
-		for i in range(10):
+		for i in range(n_components):
 			mask = (labels == i)
 			rad_interp_G16_corr[mask] = correct_radiance(rad_interp_G16_corr[mask], lza_interp_grid_G16[mask], b_scene[i], norm_scene[i])
 			rad_interp_G18_corr[mask] = correct_radiance(rad_interp_G18_corr[mask], lza_interp_grid_G18[mask], b_scene[i], norm_scene[i])

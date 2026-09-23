@@ -22,7 +22,13 @@ if __name__ == '__main__':
 
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
-	preprocessed_data = load_data("data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc")
+	# Only lat/lon are needed here; the preprocessed file also holds several
+	# (y, x, channel) radiance/BT/lza variables (~3.8 GB each) that must not be
+	# loaded into memory for this step.
+	preprocessed_data = load_data(
+		"data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc",
+		variable_names=("lat_interp_grid", "lon_interp_grid"),
+	)
 	shape_x, shape_y = preprocessed_data['lat_interp_grid'].shape[0], preprocessed_data['lat_interp_grid'].shape[1]
 	lat_interp_grid = preprocessed_data['lat_interp_grid']
 	lon_interp_grid = preprocessed_data['lon_interp_grid']
@@ -55,20 +61,26 @@ if __name__ == '__main__':
 	#rad_G18 = np.stack([rad_G18_CH0,rad_G18_CH1,rad_G18_CH2,rad_G18_CH3,rad_G18_CH4,rad_G18_CH5],axis=1)
 	#rad_G18 = np.nan_to_num(rad_G18)
 
-	rad_G16 = []
-	rad_G18 = []
-	
-	for ch in range(6):
-		f = load_data(f"data/narrowband_flux/narrowband_flux_{day}_res{res}km_C{ch}.nc")
-		rad_G16.append(f["BT_G16"].ravel().astype(np.float32))
-		rad_G18.append(f["BT_G18"].ravel().astype(np.float32))
-	
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
-	rad_G16 = np.stack(rad_G16, axis=1)
-	rad_G18 = np.stack(rad_G18, axis=1)
+	n_pixels = shape_x * shape_y
 
-	np.nan_to_num(rad_G16, copy=False)
-	np.nan_to_num(rad_G18, copy=False)
+	def load_satellite_bt(satellite):
+		"""Load one satellite's 6-channel BT into a single preallocated (n_pixels, 6) array.
+
+		Only the requested BT_{satellite} variable is read from each per-channel
+		file (not the sibling satellite's BT or lat/lon), and satellites are
+		loaded one at a time by the caller so only one (n_pixels, 6) array is
+		ever resident.
+		"""
+		rad = np.empty((n_pixels, 6), dtype=np.float32)
+		var_name = f"BT_{satellite}"
+		for ch in range(6):
+			f = load_data(
+				f"data/narrowband_flux/narrowband_flux_{day}_res{res}km_C{ch}.nc",
+				variable_names=(var_name,),
+			)
+			rad[:, ch] = f[var_name].ravel()
+		np.nan_to_num(rad, copy=False)
+		return rad
 
 	# GOES channels 08, 11, 12, 14, 15, 16
 	#a = np.array([4.63213883e-03,5.05040878e-03,5.27956064e-03,0.00645188,0.00693793,0.00632944])
@@ -166,23 +178,24 @@ if __name__ == '__main__':
     #                          -1.14752472e+01,6.27685131e+00,1.37858688e+00])
 	#intercept_cubic = (-0.3233792631885706)
 
-	# Convert BT to flux
+	# Convert BT to flux, one satellite at a time so only one (n_pixels, 6)
+	# radiance array and its Tbb are ever resident (peak halves vs. holding
+	# both satellites' radiances simultaneously).
 	sigma = 5.670374E-08
-	#Tbb_G16 = rad_G16 @ coeff_linear + intercept_linear
-	#Tbb_G16 = rad_G16_poly2 @ coeff_quadratic + intercept_quadratic
-	#Tbb_G16 = rad_G16_poly3 @ coeff_cubic + intercept_cubic
+
+	rad_G16 = load_satellite_bt("G16")
 	Tbb_G16 = cubic_regression(rad_G16)
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
+	del rad_G16
 	flux_G16 = sigma*np.power(Tbb_G16,4)
-	#Tbb_G18 = rad_G18 @ coeff_linear + intercept_linear
-	#Tbb_G18 = rad_G18_poly2 @ coeff_quadratic + intercept_quadratic
-	#Tbb_G18 = rad_G18_poly3 @ coeff_cubic + intercept_cubic
-	Tbb_G18 = cubic_regression(rad_G18)
-	flux_G18 = sigma*np.power(Tbb_G18,4)
+	del Tbb_G16
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
-	
-	del rad_G16, rad_G18
-	del Tbb_G16, Tbb_G18
+
+	rad_G18 = load_satellite_bt("G18")
+	Tbb_G18 = cubic_regression(rad_G18)
+	del rad_G18
+	flux_G18 = sigma*np.power(Tbb_G18,4)
+	del Tbb_G18
+	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
 	#plt.hist(flux_G16[(flux_G16>50) & (flux_G16<1e03)],100)
 	#plt.savefig("figures/flux_G16.png")

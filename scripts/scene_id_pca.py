@@ -22,17 +22,18 @@ import argparse
 import joblib
 from netcdf_io import write_dataset
 from scene_features import build_scene_features
+from product_paths import model_path, selected_n_components
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
 	parser.add_argument("-f", "--input_file", type=str, default="data/preprocessed_files/abi_pix1000_step5.nc")
-	parser.add_argument("--model", type=str, default="data/models/gmm_pipeline_merged_res2km_10comp.joblib")
+	parser.add_argument("--model", type=str, default=None)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	parser.add_argument("--no-plot", action="store_true", help="Skip plotting during compute; generate plots offline with plot_scene_id.py")
 	args = parser.parse_args()
 	
 	input_file = args.input_file
-	model = args.model
+	model = args.model or model_path(2, selected_n_components())
 	lambda_center = args.lambda_center
 	
 	day = input_file.split("/")[-1].split(".")[0].split("_")[1]

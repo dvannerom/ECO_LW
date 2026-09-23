@@ -1,11 +1,20 @@
+import json
 from pathlib import Path
+
+
+SELECTION_PATH = Path(config["selected_n_components_file"])
+if SELECTION_PATH.exists():
+    with SELECTION_PATH.open() as handle:
+        selected_n_components = json.load(handle)["n_components"]
+else:
+    selected_n_components = config["scene_components"]
 
 DAYS = [int(day) for day in config["days"]]
 RESOLUTION = int(config["resolution_km"])
 STEP = int(config["preprocess_step"])
-SCENE_COMPONENTS = int(config["scene_components"])
+SCENE_COMPONENTS = int(selected_n_components)
 SELECTED_N_COMPONENTS_FILE = config["selected_n_components_file"]
-MODEL = config["model"]
+MODEL = f"data/models/gmm_pipeline_merged_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.joblib"
 TRAINING_FILES = config["training_files"]
 
 
@@ -41,14 +50,15 @@ rule all:
 
 rule train_scene_model:
     input:
-        TRAINING_FILES
+        training=TRAINING_FILES,
+        selection=SELECTED_N_COMPONENTS_FILE
     output:
         MODEL
     params:
         components=SCENE_COMPONENTS,
         n_components_file=SELECTED_N_COMPONENTS_FILE
     shell:
-        "PYTHONPATH=src python scripts/train_GMM.py --input_file {input} --n_components {params.components} --n_components_file {params.n_components_file} --use_pca"
+        "PYTHONPATH=src python scripts/train_GMM.py --input_file {input.training} --n_components {params.components} --n_components_file {params.n_components_file} --use_pca"
 
 
 rule preprocess:
@@ -88,10 +98,13 @@ rule fit_adm:
             scene=range(SCENE_COMPONENTS),
         )
     params:
-        resolution=RESOLUTION
+        resolution=RESOLUTION,
+        n_components=SCENE_COMPONENTS
     shell:
         "mkdir -p data/.workflow && "
-        "PYTHONPATH=src python scripts/fit_ADM.py --day {wildcards.day} --resolution {params.resolution} --no-plot && "
+        "PYTHONPATH=src python scripts/fit_ADM.py --day {wildcards.day} "
+        "--resolution {params.resolution} --n-components {params.n_components} "
+        "--no-plot && "
         "touch data/.workflow/adm_{wildcards.day}_complete"
 
 
@@ -111,11 +124,13 @@ rule radiance_to_flux:
         )
     params:
         resolution=RESOLUTION,
+        n_components=SCENE_COMPONENTS,
         lambda_center=float(config["lambda_center"])
     shell:
         "mkdir -p data/.workflow && "
         "PYTHONPATH=src python scripts/radiance_to_flux.py --day {wildcards.day} "
-        "--resolution {params.resolution} --lambda_center {params.lambda_center} && "
+        "--resolution {params.resolution} --n-components {params.n_components} "
+        "--lambda_center {params.lambda_center} && "
         "touch data/.workflow/radiance_to_flux_{wildcards.day}_complete"
 
 

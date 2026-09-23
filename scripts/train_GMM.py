@@ -241,7 +241,7 @@ if __name__ == '__main__':
 		plt.savefig(f"figures/scene_id/pca_loadings_merged_2km.png", dpi=150)
 		plt.close(fig)
 
-	components_bins = ["0","1","2","3","4","5","6","7","8","9"]
+	components_bins = [str(i) for i in range(n_components)]
 	#features_bins = ["C08_G16","C11_G16","C12_G16","C14_G16","C15_G16","C16_G16",
 	#		         "C08_G18","C11_G18","C12_G18","C14_G18","C15_G18","C16_G18"]
 	#features_diff_bins = ["BTD14-11_G16","BTD14-11_G18","BTD14-15_G16","BTD14-15_G18"]
@@ -250,14 +250,14 @@ if __name__ == '__main__':
 	features_bins = ["C08_av","C11_av","C12_av","C14_av","C15_av","C16_av"]
 	features_diff_bins = ["BTD14-11","BTD14-15","BTD08-14","BTD16-14"]
 
-	centroids = np.empty((10,6,))
-	centroids_diff = np.empty((10,4,))
-	#centroids_diff_calib = np.empty((10,6,))
+	centroids = np.empty((n_components,6,))
+	centroids_diff = np.empty((n_components,4,))
+	#centroids_diff_calib = np.empty((n_components,6,))
 
 	# -----------------------------
 	# Physically meaningful label ordering
 	# -----------------------------
-	# Sort by original-space mean of C14_G16 (index 2 in BT stacking)
+	# Sort by original-space mean of C14_av (index 3 of features_bins)
 	# gmm.means_ are in Z-space; map to original feature space:
 	#  (1) if PCA used: inverse PCA, then inverse scale
 	#  (2) else: inverse scale directly
@@ -273,7 +273,7 @@ if __name__ == '__main__':
 	sort_idx = np.argsort(means_orig[:, 3])  # 2 == C14_G16
 	label_map = {orig: new for new, orig in enumerate(sort_idx)}
 	
-	for i in range(10):
+	for i in range(n_components):
 		for j in range(6):
 			centroids[label_map[i],j] = np.mean(BT_merged[:,j][labels_nozeros==i])
 		#for j in range(6):

@@ -34,9 +34,9 @@ For the production workflow, plotting is explicitly disabled in the compute step
 
 ```bash
 python scene_id_pca.py --input_file data/preprocessed_files/abi_271_res2km_step1.nc \
-  --model data/models/gmm_pipeline_merged_res2km_10comp.joblib --lambda_center -106 --no-plot
+	--model data/models/gmm_pipeline_merged_res2km_5comp.joblib --lambda_center -106 --no-plot
 
-python fit_ADM.py --day 271 --resolution 2 --no-plot
+python fit_ADM.py --day 271 --resolution 2 --n-components 5 --no-plot
 ```
 
 This keeps the computational pipeline lighter and lets the figures be generated
@@ -48,10 +48,10 @@ Use the standalone plotting scripts after the computational stages have finished
 
 ```bash
 # Plot an already-generated scene classification output
-python plot_scene_id.py --input data/scene_id/scene_id_271_res2km_10comp.nc
+python plot_scene_id.py --input data/scene_id/scene_id_271_res2km_5comp.nc
 
 # Plot an ADM fit for a specific day/channel/scene pair
-python plot_fit_ADM.py --day 271 --resolution 2 --channel 0 --scene 0
+python plot_fit_ADM.py --day 271 --resolution 2 --n-components 5 --channel 0 --scene 0
 
 # Compare G16-G18 radiance differences before and after ADM correction
 python plot_radiance_difference.py --day 271 --resolution 2 --channel 0
