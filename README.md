@@ -108,11 +108,11 @@ Selection criteria:
 A candidate is marked `all_criteria` only when it is shortlisted and passes
 all six criteria. The smallest such candidate is written to
 `--selection-output` (default `data/models/selected_n_components.json`), which
-`train_GMM.py --n-components-file <path>` reads to override `-n` automatically:
+`train_GMM.py --n_components_file <path>` reads to override `-n` automatically:
 
 ```bash
 PYTHONPATH=src python scripts/train_GMM.py --input_file ... \
-	--n-components-file data/models/selected_n_components.json --use_pca
+	--n_components_file data/models/selected_n_components.json --use_pca
 ```
 
 AIC, BIC, silhouette, ARI mean, the training-set minimum scene fraction, and

@@ -131,7 +131,7 @@ if __name__ == '__main__':
 	parser.add_argument("-f", "--input_file", type=str, nargs="+", default="data/preprocessed_files/abi_pix1000_step5.nc")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	parser.add_argument("-n", "--n_components", type=int, default=10, help="Number of GMM components")
-	parser.add_argument("--n-components-file", type=str, default=None,
+	parser.add_argument("--n_components_file", type=str, default=None,
 		help="JSON file from find_nComponents.py; overrides -n with its selected n_components")
 	parser.add_argument("--use_pca", action="store_true", help="Enable PCA before GMM")
 	parser.add_argument("--pca_var", type=float, default=0.98, help="Cumulative variance to keep (e.g., 0.98)")
