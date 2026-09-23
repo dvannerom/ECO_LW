@@ -4,6 +4,7 @@ DAYS = [int(day) for day in config["days"]]
 RESOLUTION = int(config["resolution_km"])
 STEP = int(config["preprocess_step"])
 SCENE_COMPONENTS = int(config["scene_components"])
+SELECTED_N_COMPONENTS_FILE = config["selected_n_components_file"]
 MODEL = config["model"]
 TRAINING_FILES = config["training_files"]
 
@@ -44,9 +45,10 @@ rule train_scene_model:
     output:
         MODEL
     params:
-        components=SCENE_COMPONENTS
+        components=SCENE_COMPONENTS,
+        n_components_file=SELECTED_N_COMPONENTS_FILE
     shell:
-        "PYTHONPATH=src python scripts/train_GMM.py --input_file {input} --n_components {params.components} --use_pca"
+        "PYTHONPATH=src python scripts/train_GMM.py --input_file {input} --n_components {params.components} --n_components_file {params.n_components_file} --use_pca"
 
 
 rule preprocess:

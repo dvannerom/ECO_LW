@@ -31,6 +31,7 @@ resolution_km: 2
 preprocess_step: 1
 lambda_center: -106
 scene_components: 10
+selected_n_components_file: data/models/selected_n_components.json
 
 # Files used to train the scene classifier. Add more representative days as needed.
 training_files:

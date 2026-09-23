@@ -35,7 +35,8 @@ MIN_EVAL_POINTS = 10
 
 def fit_candidate(features, n_components, use_pca, pca_var, random_state):
 	scaler = StandardScaler()
-	scaled = scaler.fit_transform(features)
+	# float64 avoids spurious non-positive-definite covariances in GaussianMixture's Cholesky step.
+	scaled = scaler.fit_transform(features).astype(np.float64, copy=False)
 	pca = None
 	transformed = scaled
 	if use_pca:
@@ -57,7 +58,7 @@ def fit_candidate(features, n_components, use_pca, pca_var, random_state):
 
 
 def transform_predict(features, scaler, pca, model):
-	transformed = scaler.transform(features)
+	transformed = scaler.transform(features).astype(np.float64, copy=False)
 	if pca is not None:
 		transformed = pca.transform(transformed)
 	return transformed, model.predict(transformed)
@@ -305,6 +306,46 @@ def exact_broadband_flux_diffs(obs, labels, adm_params, n_components):
 	return flux_diff(bt16_raw, bt18_raw), flux_diff(bt16_corr, bt18_corr)
 
 
+def exact_adm_ratio_metrics(eval_sets, adm_params, n_components):
+	"""Evaluate held-out ratio residuals using the exact production ADM parameters."""
+	all_errors = []
+	errors_by_channel = {channel: [] for channel in CHANNEL_INDICES}
+	errors_by_scene = {scene: [] for scene in range(n_components)}
+
+	for obs, labels in eval_sets:
+		lza16, lza18, rad16, rad18, _, _ = obs
+		for channel in CHANNEL_INDICES:
+			valid_channel = (
+				(rad16[:, channel] > 0) & (rad18[:, channel] > 0)
+				& np.isfinite(rad16[:, channel]) & np.isfinite(rad18[:, channel])
+				& np.isfinite(lza16) & np.isfinite(lza18)
+			)
+			for scene in range(n_components):
+				params = adm_params.get((channel, scene))
+				if params is None:
+					continue
+				mask = (labels == scene) & valid_channel
+				if mask.sum() < MIN_EVAL_POINTS:
+					continue
+				b, _ = params
+				observed = np.divide(rad16[mask, channel], rad18[mask, channel])
+				predicted = radiance_linear_ratio((lza16[mask], lza18[mask]), b)
+				errors = observed - predicted
+				all_errors.extend(errors.tolist())
+				errors_by_channel[channel].extend(errors.tolist())
+				errors_by_scene[scene].extend(errors.tolist())
+
+	if not all_errors:
+		return np.nan, np.nan, np.nan
+
+	def rmse(errors):
+		return float(np.sqrt(np.mean(np.square(errors))))
+
+	channel_rmse = [rmse(errors) for errors in errors_by_channel.values() if errors]
+	scene_rmse = [rmse(errors) for errors in errors_by_scene.values() if errors]
+	return rmse(all_errors), max(channel_rmse), max(scene_rmse)
+
+
 def evaluate_exact_candidate(n_components, train_obs, train_labels, eval_sets):
 	"""Run the exact ADM fit and cubic broadband regression on a shortlisted candidate.
 
@@ -322,12 +363,22 @@ def evaluate_exact_candidate(n_components, train_obs, train_labels, eval_sets):
 		corrected_diffs.append(corrected)
 	raw_diffs = np.concatenate(raw_diffs) if raw_diffs else np.array([])
 	corrected_diffs = np.concatenate(corrected_diffs) if corrected_diffs else np.array([])
+	exact_adm_rmse, exact_worst_channel_rmse, exact_worst_scene_rmse = exact_adm_ratio_metrics(
+		eval_sets, adm_params, n_components
+	)
 	if raw_diffs.size == 0 or corrected_diffs.size == 0:
-		return np.nan, np.nan, np.nan
+		return (np.nan, np.nan, np.nan, exact_adm_rmse, exact_worst_channel_rmse, exact_worst_scene_rmse)
 	raw_std = float(np.std(raw_diffs))
 	corrected_std = float(np.std(corrected_diffs))
 	improvement = (raw_std - corrected_std) / raw_std if raw_std > 0 else np.nan
-	return raw_std, corrected_std, improvement
+	return (
+		raw_std,
+		corrected_std,
+		improvement,
+		exact_adm_rmse,
+		exact_worst_channel_rmse,
+		exact_worst_scene_rmse,
+	)
 
 
 def evaluate_candidate(
@@ -519,7 +570,11 @@ def main():
 			row["exact_raw_flux_std"] = np.nan
 			row["exact_corrected_flux_std"] = np.nan
 			row["exact_flux_improvement"] = np.nan
+			row["exact_adm_ratio_rmse"] = np.nan
+			row["exact_worst_channel_adm_rmse"] = np.nan
+			row["exact_worst_scene_adm_rmse"] = np.nan
 			row["criterion_exact_improvement"] = False
+			row["criterion_exact_adm_coverage"] = False
 			continue
 
 		print(f"Running exact ADM/broadband evaluation for {n_components} components")
@@ -528,14 +583,28 @@ def main():
 		for _, path in validation_sets:
 			eval_sets.append((validation_obs_by_path[path], state["validation_labels"][path]))
 
-		raw_std, corrected_std, improvement = evaluate_exact_candidate(
+		(
+			raw_std,
+			corrected_std,
+			improvement,
+			exact_adm_rmse,
+			exact_worst_channel_rmse,
+			exact_worst_scene_rmse,
+		) = evaluate_exact_candidate(
 			n_components, train_obs, state["train_labels"], eval_sets
 		)
 		row["exact_raw_flux_std"] = raw_std
 		row["exact_corrected_flux_std"] = corrected_std
 		row["exact_flux_improvement"] = improvement
+		row["exact_adm_ratio_rmse"] = exact_adm_rmse
+		row["exact_worst_channel_adm_rmse"] = exact_worst_channel_rmse
+		row["exact_worst_scene_adm_rmse"] = exact_worst_scene_rmse
 		row["criterion_exact_improvement"] = bool(
 			np.isfinite(improvement) and improvement >= args.min_exact_flux_improvement
+		)
+		row["criterion_exact_adm_coverage"] = bool(
+			np.isfinite(exact_worst_scene_rmse)
+			and exact_worst_scene_rmse <= args.max_worst_scene_adm_rmse
 		)
 
 	for row in rows:
@@ -546,6 +615,7 @@ def main():
 			and row["criterion_stability"]
 			and row["criterion_angular_coverage"]
 			and row["criterion_adm_coverage"]
+			and row["criterion_exact_adm_coverage"]
 			and row["criterion_exact_improvement"]
 		)
 
@@ -621,6 +691,14 @@ def main():
 		values = np.asarray([row[name] for row in rows], dtype=float)
 		if np.isfinite(values).any():
 			axis.plot(counts, values, marker=marker, linewidth=1.5, label=label)
+	exact_counts = [row["n_components"] for row in rows if row["shortlisted"]]
+	for name, label, marker, color in (
+		("exact_adm_ratio_rmse", "Exact global ADM ratio RMSE", "D", "tab:red"),
+		("exact_worst_channel_adm_rmse", "Exact worst-channel ADM RMSE", "P", "tab:purple"),
+		("exact_worst_scene_adm_rmse", "Exact worst-scene ADM RMSE", "X", "tab:brown"),
+	):
+		values = [row[name] for row in rows if row["shortlisted"]]
+		axis.scatter(exact_counts, values, marker=marker, color=color, s=60, label=label, zorder=3)
 	axis.set_title("Physical ADM quality")
 	axis.set_ylabel("Radiance-ratio RMSE")
 	axis.set_xlabel("Number of GMM components")
@@ -630,7 +708,6 @@ def main():
 	axis = axes[1][1]
 	coverage = np.asarray([row["minimum_angular_coverage"] for row in rows], dtype=float)
 	line1, = axis.plot(counts, coverage, marker="o", color="tab:green", label="Minimum angular coverage")
-	exact_counts = [row["n_components"] for row in rows if row["shortlisted"]]
 	exact_improvement = [row["exact_flux_improvement"] for row in rows if row["shortlisted"]]
 	line2 = axis.scatter(exact_counts, exact_improvement, marker="D", color="tab:red", label="Exact flux improvement", zorder=3)
 	axis.set_ylabel("Fraction (angular coverage / flux improvement)")
@@ -657,6 +734,7 @@ def main():
 		("criterion_stability", "Stability"),
 		("criterion_angular_coverage", "Angular coverage"),
 		("criterion_adm_coverage", "ADM coverage"),
+		("criterion_exact_adm_coverage", "Exact ADM coverage"),
 		("criterion_exact_improvement", "Exact flux gain"),
 	)
 	criteria = np.asarray(

@@ -98,7 +98,10 @@ Selection criteria:
 	refits (default 3).
 - Angular coverage: minimum fraction of occupied 10-degree viewing-angle bins
 	per scene.
-- ADM coverage: worst-scene held-out ADM ratio RMSE stays below a threshold.
+- ADM coverage: worst-scene held-out ADM ratio RMSE stays below a threshold;
+	shortlisted candidates are checked again with the exact production ADM
+	parameters, and their exact global, worst-channel, and worst-scene RMSEs are
+	written to the CSV and plotted as exact-stage markers.
 - Exact correction benefit: fractional reduction in the *exact* broadband
 	G16-G18 flux spread, evaluated only for shortlisted candidates.
 
@@ -117,11 +120,6 @@ raw/corrected brightness-temperature spreads were dropped as redundant or
 misleading for this decision (see `--help` for remaining thresholds). ICL is
 computed on the training set (matching its standard definition), not the
 held-out set.
-
-A candidate is marked `all_criteria` only when all four thresholds pass. AIC,
-BIC, held-out likelihood, ICL, posterior entropy, and the raw/corrected BT and
-flux spreads are also retained in the CSV for inspection. Candidate outputs do
-not overwrite production models, labels, ADMs, or flux products.
 
 For a SLURM cluster, add a cluster profile or use Snakemake's executor plugin,
 for example:
