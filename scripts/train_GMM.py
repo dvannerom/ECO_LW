@@ -199,8 +199,6 @@ if __name__ == '__main__':
 
 	pipeline = Pipeline(steps)
 	pipeline.fit(BT_merged)
-	labels_nozeros = pipeline.predict(BT_merged)
-	
 	if use_pca:
 		# Scree plot
 		fig, ax = plt.subplots(figsize=(7, 4))
@@ -227,7 +225,7 @@ if __name__ == '__main__':
 		#]
 		feature_names = [
 		    "C08_av","C11_av","C12_av","C14_av","C15_av","C16_av",
-		    "BTD14-11","BTD14-15","BTD08-14","BTD16-14"
+		    "BTD14-11","BTD14-15","BTD14-08","BTD14-16"
 		]
 		fig, axs = plt.subplots(pc_to_show, 1, figsize=(8, 2.2*pc_to_show), sharex=True)
 		axs = np.atleast_1d(axs)
@@ -241,72 +239,7 @@ if __name__ == '__main__':
 		plt.savefig(f"figures/scene_id/pca_loadings_merged_2km.png", dpi=150)
 		plt.close(fig)
 
-	components_bins = [str(i) for i in range(n_components)]
-	#features_bins = ["C08_G16","C11_G16","C12_G16","C14_G16","C15_G16","C16_G16",
-	#		         "C08_G18","C11_G18","C12_G18","C14_G18","C15_G18","C16_G18"]
-	#features_diff_bins = ["BTD14-11_G16","BTD14-11_G18","BTD14-15_G16","BTD14-15_G18"]
-	#features_diff_calib_bins = ["BTD_C08","BTD_C11","BTD_C12","BTD_C14","BTD_C15","BTD_C16"]
-
-	features_bins = ["C08_av","C11_av","C12_av","C14_av","C15_av","C16_av"]
-	features_diff_bins = ["BTD14-11","BTD14-15","BTD08-14","BTD16-14"]
-
-	centroids = np.empty((n_components,6,))
-	centroids_diff = np.empty((n_components,4,))
-	#centroids_diff_calib = np.empty((n_components,6,))
-
-	# -----------------------------
-	# Physically meaningful label ordering
-	# -----------------------------
-	# Sort by original-space mean of C14_av (index 3 of features_bins)
-	# gmm.means_ are in Z-space; map to original feature space:
-	#  (1) if PCA used: inverse PCA, then inverse scale
-	#  (2) else: inverse scale directly
-	scaler = pipeline.named_steps["scaler"]
-	gmm = pipeline.named_steps["gmm"]
-	
-	if use_pca:
-		pca = pipeline.named_steps["pca"]
-		means_orig = scaler.inverse_transform(pca.inverse_transform(gmm.means_))
-	else:
-		means_orig = scaler.inverse_transform(gmm.means_)
-	
-	sort_idx = np.argsort(means_orig[:, 3])  # 2 == C14_G16
-	label_map = {orig: new for new, orig in enumerate(sort_idx)}
-	
-	for i in range(n_components):
-		for j in range(6):
-			centroids[label_map[i],j] = np.mean(BT_merged[:,j][labels_nozeros==i])
-		#for j in range(6):
-		#	centroids_diff_calib[label_map[i],j] = np.mean(BT_nozeros[:,j+12][labels_nozeros==i])
-		for j in range(4):
-			centroids_diff[label_map[i],j] = np.mean(BT_merged[:,j+6][labels_nozeros==i])
-
-	# Plot centroids
-	fig, ax = plt.subplots(figsize=(10, 6))
-	im, cbar = heatmap(centroids, components_bins, features_bins, ax=ax, cmap="rainbow", cbarlabel="BT (K)")
-	texts = annotate_heatmap(im, valfmt="{x:.1f}")
-	ax.set_xlabel("Feature")
-	ax.set_ylabel("Scene ID")
-	fig.tight_layout()
 	suffix = f"merged_res2km_{int(n_components)}comp"
-	plt.savefig(f"figures/centroids_{suffix}.png", dpi=150)
-	# Plot diff
-	fig, ax = plt.subplots(figsize=(4, 6))
-	im, cbar = heatmap(centroids_diff, components_bins, features_diff_bins, ax=ax, cmap=mpl.cm.bwr, cbarlabel="BTD")
-	texts = annotate_heatmap(im, valfmt="{x:.1f}",threshold=-6)
-	ax.set_xlabel("Feature")
-	ax.set_ylabel("Scene ID")
-	fig.tight_layout()
-	plt.savefig(f"figures/centroids_diff_{suffix}.png", dpi=150)
-	## Plot diff calib
-	#fig, ax = plt.subplots(figsize=(6, 6))
-	#im, cbar = heatmap(centroids_diff_calib, components_bins, features_diff_calib_bins, ax=ax, cmap=mpl.cm.bwr, cbarlabel="BTD")
-	#texts = annotate_heatmap(im, valfmt="{x:.1f}",threshold=-6)
-	#ax.set_xlabel("Feature")
-	#ax.set_ylabel("Scene ID")
-	#fig.tight_layout()
-	#suffix = f"{day}_{res}_{int(n_components)}comp"
-	#plt.savefig(f"figures/centroids_diff_calib_{suffix}.png", dpi=150)
 
 	# -----------------------------
 	# Save model

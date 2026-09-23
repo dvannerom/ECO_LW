@@ -50,6 +50,12 @@ Use the standalone plotting scripts after the computational stages have finished
 # Plot an already-generated scene classification output
 python plot_scene_id.py --input data/scene_id/scene_id_271_res2km_5comp.nc
 
+# Plot BT and BTD centroids from an existing GMM and its training files
+PYTHONPATH=src python plotting/plot_scene_centroids.py \
+	--model data/models/gmm_pipeline_merged_res2km_5comp.joblib \
+	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
+	--label-order c14_btd14_08
+
 # Plot an ADM fit for a specific day/channel/scene pair
 python plot_fit_ADM.py --day 271 --resolution 2 --n-components 5 --channel 0 --scene 0
 

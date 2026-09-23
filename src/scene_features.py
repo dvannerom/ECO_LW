@@ -5,6 +5,33 @@ import numpy as np
 from netcdf_io import load_data
 
 
+def scene_label_sort_order(means_scaled, method="c14_btd14_08"):
+    """Return component order from cold/icy to hot clear-sky land.
+
+    Parameters
+    ----------
+    means_scaled : numpy.ndarray
+        Component means in standardized feature space with shape
+        ``(n_components, 10)``.
+    method : str
+        ``"c14"`` sorts by standardized C14. ``"c14_btd14_08"`` sorts
+        by standardized C14 plus BTD14-08.
+    """
+    if method == "c14":
+        score = means_scaled[:, 3]
+    elif method == "c14_btd14_08":
+        score = means_scaled[:, 3] + means_scaled[:, 8]
+    else:
+        raise ValueError(f"Unknown scene label ordering: {method}")
+    return np.argsort(score)
+
+
+def scene_label_mapping(means_scaled, method="c14_btd14_08"):
+    """Return a mapping from GMM component IDs to ordered scene IDs."""
+    sort_idx = scene_label_sort_order(means_scaled, method)
+    return {component: scene_id for scene_id, component in enumerate(sort_idx)}
+
+
 def build_scene_features(input_file, chunk_rows=2048, pixel_step=1):
     """Build valid-pixel scene features using the production feature schema.
 
