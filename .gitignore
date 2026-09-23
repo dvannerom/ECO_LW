@@ -15,3 +15,8 @@ __pycache__/
 .snakemake/
 
 .vscode/
+
+# Snakemake completion markers and generated diagnostics/selection outputs
+data/.workflow/
+data/models/selected_n_components*.json
+figures/*.csv
