@@ -1,130 +1,13 @@
 import os
 import json
 import numpy as np
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm
-from sklearn.pipeline import Pipeline
-from sklearn.mixture import GaussianMixture, BayesianGaussianMixture
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from scipy.stats import norm
-import time
-import math
 import argparse
 import joblib
+from sklearn.pipeline import Pipeline
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from scene_features import build_scene_features
-
-def heatmap(data, row_labels, col_labels, ax=None, cbar_kw=None, cbarlabel="", **kwargs):
-	"""
-	Create a heatmap from a numpy array and two lists of labels.
-	
-	Parameters
-	----------
-	data
-	    A 2D numpy array of shape (M, N).
-	row_labels
-	    A list or array of length M with the labels for the rows.
-	col_labelsd
-	    A list or array of length N with the labels for the columns.
-	ax
-	    A `matplotlib.axes.Axes` instance to which the heatmap is plotted.  If
-	    not provided, use current Axes or create a new one.  Optional.
-	cbar_kw
-	    A dictionary with arguments to `matplotlib.Figure.colorbar`.  Optional.
-	cbarlabel
-	    The label for the colorbar.  Optional.
-	**kwargs
-	    All other arguments are forwarded to `imshow`.
-	"""
-	
-	if ax is None:
-		ax = plt.gca()
-	
-	if cbar_kw is None:
-		cbar_kw = {}
-	
-	# Plot the heatmap
-	im = ax.imshow(data, **kwargs)#, vmin=-10, vmax=10)
-	
-	# Create colorbar
-	cbar = ax.figure.colorbar(im, ax=ax, **cbar_kw)
-	cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
-	
-	# Show all ticks and label them with the respective list entries.
-	ax.set_xticks(range(data.shape[1]), labels=col_labels, rotation=30, ha="right", rotation_mode="anchor")
-	ax.set_yticks(range(data.shape[0]), labels=row_labels)
-	
-	# Let the horizontal axes labeling appear on top.
-	ax.tick_params(top=False, bottom=True, labeltop=False, labelbottom=True)
-	
-	# Turn spines off and create white grid.
-	ax.spines[:].set_visible(False)
-	
-	ax.set_xticks(np.arange(data.shape[1]+1)-.5, minor=True)
-	ax.set_yticks(np.arange(data.shape[0]+1)-.5, minor=True)
-	ax.grid(which="minor", color="w", linestyle='-', linewidth=3)
-	ax.tick_params(which="minor", bottom=False, left=False)
-	
-	return im, cbar
-
-
-def annotate_heatmap(im, data=None, valfmt="{x:.2f}", textcolors=("black", "white"), threshold=None, **textkw):
-	"""
-	A function to annotate a heatmap.
-	
-	Parameters
-	----------
-	im
-	    The AxesImage to be labeled.
-	data
-	    Data used to annotate.  If None, the image's data is used.  Optional.
-	valfmt
-	    The format of the annotations inside the heatmap.  This should either
-	    use the string format method, e.g. "$ {x:.2f}", or be a
-	    `matplotlib.ticker.Formatter`.  Optional.
-	textcolors
-	    A pair of colors.  The first is used for values below a threshold,
-	    the second for those above.  Optional.
-	threshold
-	    Value in data units according to which the colors from textcolors are
-	    applied.  If None (the default) uses the middle of the colormap as
-	    separation.  Optional.
-	**kwargs
-	    All other arguments are forwarded to each call to `text` used to create
-	    the text labels.
-	"""
-	
-	if not isinstance(data, (list, np.ndarray)):
-		data = im.get_array()
-	
-	# Normalize the threshold to the images color range.
-	if threshold is not None:
-		threshold = im.norm(threshold)
-	else:
-		threshold = im.norm(data.max())/2.
-	
-	# Set default alignment to center, but allow it to be
-	# overwritten by textkw.
-	kw = dict(horizontalalignment="center",verticalalignment="center")
-	kw.update(textkw)
-	
-	# Get the formatter in case a string is supplied
-	if isinstance(valfmt, str):
-		valfmt = mpl.ticker.StrMethodFormatter(valfmt)
-	
-	# Loop over the data and create a `Text` for each "pixel".
-	# Change the text's color depending on the data.
-	texts = []
-	for i in range(data.shape[0]):
-		for j in range(data.shape[1]):
-			kw.update(color=textcolors[int(im.norm(data[i, j]) < threshold)])
-			#condition = int(abs(data[i, j]) < threshold)
-			#kw.update(color=textcolors[condition])
-			text = im.axes.text(j, i, valfmt(data[i, j], None), **kw)
-			texts.append(text)
-	
-	return texts
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
@@ -151,8 +34,6 @@ if __name__ == '__main__':
 	use_pca = args.use_pca
 	pca_var = args.pca_var
 	
-	os.makedirs("figures/scene_id", exist_ok=True)
-
 	BT_arrays = []
 
 	for f in input_file:	
@@ -201,45 +82,6 @@ if __name__ == '__main__':
 
 	pipeline = Pipeline(steps)
 	pipeline.fit(BT_merged)
-	if use_pca:
-		# Scree plot
-		fig, ax = plt.subplots(figsize=(7, 4))
-		ax.plot(np.arange(1, len(cvar)+1), cvar, marker='o')
-		ax.axhline(pca_var, color='r', linestyle='--', label=f"Target var={pca_var:.2f}")
-		ax.axvline(n_pc, color='g', linestyle=':', label=f"Selected PCs={n_pc}")
-		ax.set_xlabel("Principal component")
-		ax.set_ylabel("Cumulative explained variance")
-		ax.legend(frameon=False)
-		fig.tight_layout()
-		plt.savefig(f"figures/scene_id/pca_scree_merged_2km.png", dpi=150)
-		plt.close(fig)
-		
-		# Loadings (first min(6, n_pc) PCs)
-		# loadings shape: [original_features x PCs]
-		pca = pipeline.named_steps["pca"]
-		loadings = pca.components_.T  # columns are PCs
-		pc_to_show = min(6, loadings.shape[1])
-		#feature_names = [
-		#    "C08_G16","C11_G16","C12_G16","C14_G16","C15_G16","C16_G16",
-		#    "C08_G18","C11_G18","C12_G18","C14_G18","C15_G18","C16_G18",
-		#    #"BTD_C08","BTD_C11","BTD_C12","BTD_C14","BTD_C15","BTD_C16",
-		#    "BTD14-11_G16","BTD14-11_G18","BTD14-15_G16","BTD14-15_G18"
-		#]
-		feature_names = [
-		    "C08_av","C11_av","C12_av","C14_av","C15_av","C16_av",
-		    "BTD14-11","BTD14-15","BTD14-08","BTD14-16"
-		]
-		fig, axs = plt.subplots(pc_to_show, 1, figsize=(8, 2.2*pc_to_show), sharex=True)
-		axs = np.atleast_1d(axs)
-		for i in range(pc_to_show):
-			axs[i].bar(np.arange(len(feature_names)), loadings[:, i])
-			axs[i].set_title(f"PC{i+1} loadings")
-			axs[i].grid(True, alpha=0.3)
-		axs[-1].set_xticks(np.arange(len(feature_names)))
-		axs[-1].set_xticklabels(feature_names, rotation=45, ha='right')
-		fig.tight_layout()
-		plt.savefig(f"figures/scene_id/pca_loadings_merged_2km.png", dpi=150)
-		plt.close(fig)
 
 	suffix = f"merged_{len(input_file)}files_res2km_{int(n_components)}comp"
 

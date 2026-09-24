@@ -100,7 +100,6 @@ def main():
 	parser.add_argument("--power-law-file", type=Path,
 	                     default=ROOT / "data" / "models" / "channel_radiance_power_law.json",
 	                     help="JSON from scripts/fit_irradiance.py; falls back to built-in defaults if missing")
-	parser.add_argument("--no-plot", action="store_true", help="Skip the error-vs-flux diagnostic plot")
 	args = parser.parse_args()
 
 	lambdas_goes, response_goes = load_goes_filters(args.filter_dir, CHANNELS)
@@ -140,21 +139,6 @@ def main():
 	flux_cubic_pred = SIGMA * np.power(t_broadband_cubic_pred, 4)
 	flux_err = (flux_bb - flux_cubic_pred) / flux_bb
 	print(f"Cubic fit: OLR error mean={np.mean(flux_err):.4f}, stddev={np.std(flux_err):.4f}")
-
-	if not args.no_plot:
-		import matplotlib
-		matplotlib.use("Agg")
-		import matplotlib.pyplot as plt
-
-		figures_dir = ROOT / "figures" / "broadband_flux"
-		figures_dir.mkdir(parents=True, exist_ok=True)
-		fig = plt.figure(figsize=(10, 4))
-		plt.plot(flux_cubic_pred, 100 * (flux_err - np.mean(flux_err)), ".")
-		plt.xlabel("Estimated broadband irradiance (W/m2)")
-		plt.ylabel("Error (%)")
-		fig.tight_layout()
-		fig.savefig(figures_dir / "narrowband_to_broadband_cubic_fit_error.png", dpi=150)
-		plt.close(fig)
 
 
 if __name__ == "__main__":

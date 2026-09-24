@@ -1,8 +1,5 @@
 import numpy as np
 import xarray as xr
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, BoundaryNorm
 import cartopy.crs as ccrs
 import math
 import argparse

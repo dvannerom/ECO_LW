@@ -91,43 +91,22 @@ def main():
 	parser.add_argument("--output", type=Path,
 	                     default=ROOT / "data" / "models" / "channel_radiance_power_law.json",
 	                     help="Output JSON path for fitted a/b coefficients")
-	parser.add_argument("--no-plot", action="store_true", help="Skip the per-channel fit diagnostic plot")
 	args = parser.parse_args()
 
 	temperatures = np.arange(args.t_min, args.t_max + args.t_step, args.t_step)
 	lambdas_goes, response_goes = load_goes_filters(args.filter_dir, CHANNELS)
 
 	a_coeffs, b_coeffs = [], []
-	radiances = []
 	for channel, lambdas_nm, response in zip(CHANNELS, lambdas_goes, response_goes):
 		a, b, radiance = fit_channel_power_law(lambdas_nm, response, temperatures)
 		print(f"{channel}: a={a:.8e}, b={b:.8f}")
 		a_coeffs.append(a)
 		b_coeffs.append(b)
-		radiances.append(radiance)
 
 	args.output.parent.mkdir(parents=True, exist_ok=True)
 	with args.output.open("w") as handle:
 		json.dump({"channels": CHANNELS, "a": a_coeffs, "b": b_coeffs}, handle, indent=2)
 	print(f"Wrote {args.output}")
-
-	if not args.no_plot:
-		import matplotlib
-		matplotlib.use("Agg")
-		import matplotlib.pyplot as plt
-
-		figures_dir = ROOT / "figures" / "broadband_flux"
-		figures_dir.mkdir(parents=True, exist_ok=True)
-		for channel, radiance, a, b in zip(CHANNELS, radiances, a_coeffs, b_coeffs):
-			fig, ax = plt.subplots()
-			ax.plot(temperatures, radiance, label=f"Planck blackbody narrowband radiance ({channel})")
-			ax.plot(temperatures, power_law(temperatures, a, b), "g--",
-			        label="Power-law fit: a=%5.2e, b=%5.3f" % (a, b))
-			ax.set_xlabel("Temperature (K)")
-			ax.set_ylabel(r"Radiance (W/$\mathrm{m}^{2}$/sr)")
-			ax.legend(frameon=False)
-			fig.savefig(figures_dir / f"irradiance_fit_goes-r_abi_{channel}.png", dpi=150)
-			plt.close(fig)
 
 
 if __name__ == "__main__":

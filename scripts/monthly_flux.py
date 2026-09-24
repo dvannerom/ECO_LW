@@ -17,7 +17,6 @@ if __name__ == '__main__':
 	parser.add_argument("--inputs", nargs="+", required=True, help="Daily broadband flux files")
 	parser.add_argument("--reference-data", required=True, help="Preprocessed file used for grid coordinates")
 	parser.add_argument("--output", required=True, help="Monthly output NPZ path")
-	parser.add_argument("--no-plot", action="store_true", help="Skip Cartopy diagnostic plot")
 	parser.add_argument("-r","--resolution", type=int, default=2)
 	parser.add_argument("-l", "--lambda-center", type=float, default=-106)
 	args = parser.parse_args()
@@ -25,9 +24,6 @@ if __name__ == '__main__':
 	input_files = args.inputs
 	reference_data = args.reference_data
 	output_file = args.output
-	no_plot = args.no_plot
-	res = args.resolution
-	lambda_center = args.lambda_center
 
 	flux_G16 = []
 	flux_G18 = []

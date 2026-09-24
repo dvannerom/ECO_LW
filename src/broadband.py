@@ -1,6 +1,8 @@
 """Shared cubic narrowband-to-broadband regression, matching narrowband_to_broadband.py."""
 
 import json
+from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 
@@ -29,10 +31,31 @@ COEFF_CUBIC = [
     -1.79004995e-02, 6.84997236e-03, 1.47793639e-04,
 ]
 INTERCEPT_CUBIC = 384.61181077479637
+WORKFLOW_COEFFICIENTS_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "data"
+    / "models"
+    / "narrowband_to_broadband_coeffs.json"
+)
 
 
-def cubic_regression(rad, coeff=COEFF_CUBIC, intercept=INTERCEPT_CUBIC):
+@lru_cache(maxsize=1)
+def _default_cubic_coefficients():
+    """Return workflow-generated coefficients, falling back to the built-in model."""
+    if WORKFLOW_COEFFICIENTS_FILE.exists():
+        return load_cubic_coefficients(WORKFLOW_COEFFICIENTS_FILE)
+    return COEFF_CUBIC, INTERCEPT_CUBIC
+
+
+def cubic_regression(rad, coeff=None, intercept=None):
     """Map six-channel narrowband brightness temperatures to an effective broadband value."""
+    if coeff is None and intercept is None:
+        coeff, intercept = _default_cubic_coefficients()
+    elif coeff is None:
+        coeff = COEFF_CUBIC
+    elif intercept is None:
+        intercept = INTERCEPT_CUBIC
+
     x = [rad[:, i] for i in range(6)]
     out = np.full(rad.shape[0], intercept, dtype=rad.dtype)
 

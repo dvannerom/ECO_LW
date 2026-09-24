@@ -7,30 +7,13 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-from scipy.optimize import curve_fit
-from scipy.integrate import quad
 import math
 import argparse
 import psutil
 import os
-from adm import (
-	flux_integrand,
-	flux_upward_integrand,
-	radiance_integrand,
-	radiance_linear as radiance_lin,
-	radiance_linear_normalized as radiance_lin_norm,
-	radiance_linear_ratio as radiance_lin_ratio,
-	radiance_quadratic as radiance_quad,
-	radiance_quadratic_normalized as radiance_quad_norm,
-	radiance_quadratic_ratio as radiance_quad_ratio,
-)
 from adm_fitting import fit_adm_scene
 from netcdf_io import load_data, write_dataset
 from product_paths import scene_id_path
-
-mpl.rcParams["mathtext.default"] = 'regular'
 
 if __name__ == '__main__':
     
@@ -38,7 +21,6 @@ if __name__ == '__main__':
 	parser.add_argument("-d","--day", type=int, default=245)
 	parser.add_argument("-r","--resolution", type=int, default=2)
 	parser.add_argument("--n-components", type=int, required=True)
-	parser.add_argument("--no-plot", action="store_true", help="Skip plotting during fit; generate plots offline with plot_fit_ADM.py")
 	#parser.add_argument("-c","--channel", type=int, default=0)
 	#parser.add_argument("-s","--scene", type=int, default=0)
 	args = parser.parse_args()
@@ -195,43 +177,6 @@ if __name__ == '__main__':
 			# Fit ratio on all points, matching the shared ADM fitting routine
 			b_value, norm_ADM = fit_adm_scene(lza_G16_scene, lza_G18_scene, rad_G16_scene, rad_G18_scene)
 			popt = (b_value,)
-
-			# Fit for the normalization in 1D (diagnostic plot only; not saved)
-			popt_norm, pcov_norm = curve_fit(radiance_lin_norm,(x_var,np.full_like(x_var,popt[0])),y_var)
-			#popt_norm, pcov_norm = curve_fit(radiance_quad_norm,(x_var,np.full_like(x_var,popt[0]),np.full_like(x_var,popt[1])),y_var)
-			perr_norm = np.sqrt(np.diag(pcov_norm))	
-
-			#print("a = "+str(popt_norm[0])+" +/- "+str(100*perr_norm[0]/np.abs(popt_norm[0]))+" %, b = "+str(popt[0])+" +/- "+str(100*perr[0]/np.abs(popt[0]))+" %")
-			#flux_upward = (1./1000)*quad(flux_upward_integrand,0,90,args=(popt_norm,popt))[0]
-			#flux = (1./1000)*quad(flux_integrand,0,90,args=(popt_norm,popt))[0]
-			#print("Flux = "+str(flux)+" W/m2")
-
-			#fig = plt.figure(figsize=(10, 8))
-			#plt.plot(lza_G16_slice_lza18,rad_ratio_slice_lza18,'x',label="GOES 16/GOES 18 radiance, vza18 = 55°")
-			#plt.plot(lza_G18_slice_lza16,rad_ratio_slice_lza16,'+',label="GOES 18/GOES 16 radiance, vza16 = 55°")
-			#plt.plot(np.linspace(0,89,100),radiance_ratio((np.linspace(0,89,100),55),popt),label="Fit")
-			#plt.xlabel(r"Viewing zenith angle ($\degree$)")
-			#plt.ylabel(r"Radiance ratio")
-			#plt.legend(frameon=False)
-			#fig.tight_layout()
-			#plt.savefig("figures/fit_ADM_slice_channel"+str(channel)+"_scene"+str(scene)+".png")
-			#plt.show()
-
-			if not args.no_plot:
-				# Plot 1D data and fit
-				fig = plt.figure(figsize=(10, 6))
-				plt.scatter(x_var,y_var,s=0.1,c='b',label="GOES East data")
-				plt.scatter(x_var,y_var/radiance_lin(x_var,*popt),s=0.1,c='r',label="Corrected GOES East data")
-				plt.plot(np.linspace(0,89,100),radiance_lin_norm((np.linspace(0,89,100),*popt),popt_norm),label="Fit")
-				#plt.plot(np.linspace(0,89,100),radiance_lin(np.linspace(0,89,100),*popt),label="Fit")
-				#plt.tick_params('x', labelbottom=False)
-				plt.ylabel(r"Radiance (mW/m$^{2}$.sr.$\mu$m)")
-				plt.xlabel(r"Viewing zenith angle ($\degree$)")
-				plt.xticks(np.arange(0, 100, 10))
-				plt.legend(frameon=False)
-				fig.tight_layout()
-				plt.savefig("figures/ADM/fit_ADM_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+"_scene"+str(scene)+".png")
-				plt.show()
 
 			# Save uncorrected and corrected radiances
 			write_dataset(

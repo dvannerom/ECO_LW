@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import argparse
 from sklearn.preprocessing import PolynomialFeatures
