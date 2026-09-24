@@ -30,17 +30,8 @@ resumed without restarting earlier stages. The legacy ADM and radiance scripts
 write several products in one invocation; the workflow records per-day
 completion markers for those batch operations.
 
-For the production workflow, plotting is explicitly disabled in the compute steps:
-
-```bash
-python scene_id_pca.py --input_file data/preprocessed_files/abi_271_res2km_step1.nc \
-	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib --lambda_center -106 --no-plot
-
-python fit_ADM.py --day 271 --resolution 2 --n-components 5 --no-plot
-```
-
-This keeps the computational pipeline lighter and lets the figures be generated
-later, offline, from the saved NetCDF products.
+The compute-stage scripts no longer take `--no-plot` flags. Plotting is kept as
+an explicit offline step after the products have been written to disk.
 
 ## Offline plotting
 
@@ -48,7 +39,7 @@ Use the standalone plotting scripts after the computational stages have finished
 
 ```bash
 # Plot an already-generated scene classification output
-python plot_scene_id.py --input data/scene_id/scene_id_271_res2km_5comp.nc
+python plotting/plot_scene_id.py --input data/scene_id/scene_id_271_res2km_5comp.nc
 
 # Plot BT and BTD centroids from an existing GMM and its training files
 PYTHONPATH=src python plotting/plot_scene_centroids.py \
@@ -56,21 +47,40 @@ PYTHONPATH=src python plotting/plot_scene_centroids.py \
 	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
 	--label-order c14_btd14_08
 
+# Plot PCA variance and loading diagnostics for the saved model
+PYTHONPATH=src python plotting/plot_gmm_diagnostics.py \
+	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
+	data/preprocessed_files/abi_271_res2km_step1.nc \
+	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib
+
 # Plot an ADM fit for a specific day/channel/scene pair
-python plot_fit_ADM.py --day 271 --resolution 2 --n-components 5 --channel 0 --scene 0
+python plotting/plot_fit_ADM.py --day 271 --resolution 2 --n-components 5 --channel 0 --scene 0
 
 # Compare G16-G18 radiance differences before and after ADM correction
-python plot_radiance_difference.py --day 271 --resolution 2 --channel 0
+python plotting/plot_radiance_difference.py --day 271 --resolution 2 --channel 0
 
-# Plot G16, G18, and G16-G18 broadband flux
-python plot_broadband_flux.py --day 271 --resolution 2
+# Plot G16, G18, and G16-G18 broadband flux from a saved NetCDF product
+python plotting/plot_broadband_flux.py --day 271 --resolution 2 \
+	--input data/broadband_flux/broadband_flux_271_res2km.nc
+
+# Plot narrowband-to-broadband cubic-fit diagnostic from the saved coefficients
+PYTHONPATH=src python plotting/plot_narrowband_to_broadband.py \
+	--coefficients-file data/models/narrowband_to_broadband_coeffs.json \
+	--sunny-dir data/Sunny \
+	--filter-dir data/goes_channels
+
+# Plot the channel radiance power-law fit used in the broadband conversion
+PYTHONPATH=src python plotting/plot_irradiance_fit.py \
+	--model data/models/channel_radiance_power_law.json \
+	--filter-dir data/goes_channels
 
 # Plot monthly mean G16 and G18 flux and their difference variability
-python plot_monthly_flux.py --input data/monthly/monthly_flux_res2km.nc
+python plotting/plot_monthly_flux.py --input data/monthly/monthly_flux_res2km.nc
 ```
 
-These scripts read the saved NetCDF products and create PNG outputs in the
-`figures/` tree without rerunning the expensive data-processing steps.
+These scripts read the saved NetCDF products and model artifacts and create PNG
+outputs under the `figures/` tree without rerunning the expensive
+data-processing steps.
 
 ## GMM component selection
 
