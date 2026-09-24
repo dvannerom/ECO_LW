@@ -1,5 +1,7 @@
 """Shared cubic narrowband-to-broadband regression, matching narrowband_to_broadband.py."""
 
+import json
+
 import numpy as np
 
 # GOES channels 08, 11, 12, 14, 15, 16, fitted against reference broadband flux.
@@ -52,3 +54,16 @@ def cubic_regression(rad, coeff=COEFF_CUBIC, intercept=INTERCEPT_CUBIC):
                 k += 1
 
     return out
+
+
+def load_cubic_coefficients(path):
+    """Load cubic regression coefficients fitted by scripts/compute_temperature_SBDART.py.
+
+    :param path: (str or Path) JSON file with a "cubic" key holding
+        "coefficients" (list of 27 floats) and "intercept" (float).
+    :return: (list[float], float) coefficients, intercept, ready for cubic_regression().
+    """
+    with open(path) as handle:
+        data = json.load(handle)
+    cubic = data["cubic"]
+    return cubic["coefficients"], cubic["intercept"]

@@ -33,22 +33,29 @@ lambda_center: -106
 scene_components: 5
 selected_n_components_file: data/models/selected_n_components.json
 
+# SBDART "Sunny" clear-sky/cloudy scene library used to fit the
+# narrowband-to-broadband regression coefficients (see scripts/compute_temperature_SBDART.py).
+sunny_dir: data/Sunny
+goes_filter_dir: data/goes_channels
+channel_power_law_file: data/models/channel_radiance_power_law.json
+narrowband_to_broadband_coeffs_file: data/models/narrowband_to_broadband_coeffs.json
+
 # Selected files used to train the scene classifier. Add more representative days as needed.
 training_files:
   - data/preprocessed_files/abi_245_res2km_step1.nc
-#  - data/preprocessed_files/abi_247_res2km_step1.nc
-#  - data/preprocessed_files/abi_249_res2km_step1.nc
+  - data/preprocessed_files/abi_247_res2km_step1.nc
+  - data/preprocessed_files/abi_249_res2km_step1.nc
 #  - data/preprocessed_files/abi_250_res2km_step1.nc
 #  - data/preprocessed_files/abi_251_res2km_step1.nc
 #  - data/preprocessed_files/abi_254_res2km_step1.nc
 #  - data/preprocessed_files/abi_255_res2km_step1.nc
-#  - data/preprocessed_files/abi_256_res2km_step1.nc
+  - data/preprocessed_files/abi_256_res2km_step1.nc
 #  - data/preprocessed_files/abi_257_res2km_step1.nc
 #  - data/preprocessed_files/abi_258_res2km_step1.nc
 #  - data/preprocessed_files/abi_261_res2km_step1.nc
 #  - data/preprocessed_files/abi_262_res2km_step1.nc
 #  - data/preprocessed_files/abi_263_res2km_step1.nc
-#  - data/preprocessed_files/abi_264_res2km_step1.nc
+  - data/preprocessed_files/abi_264_res2km_step1.nc
 #  - data/preprocessed_files/abi_266_res2km_step1.nc
 #  - data/preprocessed_files/abi_268_res2km_step1.nc
 #  - data/preprocessed_files/abi_269_res2km_step1.nc

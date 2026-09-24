@@ -16,6 +16,10 @@ SCENE_COMPONENTS = int(selected_n_components)
 SELECTED_N_COMPONENTS_FILE = config["selected_n_components_file"]
 TRAINING_FILES = config["training_files"]
 MODEL = f"data/models/gmm_pipeline_merged_{len(TRAINING_FILES)}files_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.joblib"
+SUNNY_DIR = config["sunny_dir"]
+GOES_FILTER_DIR = config["goes_filter_dir"]
+NARROWBAND_TO_BROADBAND_COEFFS_FILE = config["narrowband_to_broadband_coeffs_file"]
+CHANNEL_POWER_LAW_FILE = config["channel_power_law_file"]
 
 
 def preprocessed(day):
@@ -45,6 +49,8 @@ rule all:
     input:
         config["output"]["monthly"],
         MODEL,
+        CHANNEL_POWER_LAW_FILE,
+        NARROWBAND_TO_BROADBAND_COEFFS_FILE,
         *BROADBAND_OUTPUTS
 
 
@@ -134,13 +140,42 @@ rule radiance_to_flux:
         "touch data/.workflow/radiance_to_flux_{wildcards.day}_complete"
 
 
+rule fit_channel_power_law:
+    input:
+        filters=GOES_FILTER_DIR
+    output:
+        CHANNEL_POWER_LAW_FILE
+    params:
+        filter_dir=GOES_FILTER_DIR
+    shell:
+        "PYTHONPATH=src python scripts/fit_irradiance.py "
+        "--filter-dir {params.filter_dir} --output {output} --no-plot"
+
+
+rule fit_narrowband_to_broadband_coeffs:
+    input:
+        sunny=SUNNY_DIR,
+        filters=GOES_FILTER_DIR,
+        power_law=CHANNEL_POWER_LAW_FILE
+    output:
+        NARROWBAND_TO_BROADBAND_COEFFS_FILE
+    params:
+        sunny_dir=SUNNY_DIR,
+        filter_dir=GOES_FILTER_DIR
+    shell:
+        "PYTHONPATH=src python scripts/compute_temperature_SBDART.py "
+        "--sunny-dir {params.sunny_dir} --filter-dir {params.filter_dir} "
+        "--power-law-file {input.power_law} --output {output} --no-plot"
+
+
 rule narrowband_to_broadband:
     input:
         data=lambda wildcards: preprocessed(wildcards.day),
         narrowbands=expand(
             "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.nc",
             channel=range(6),
-        )
+        ),
+        coefficients=NARROWBAND_TO_BROADBAND_COEFFS_FILE
     output:
         "data/broadband_flux/broadband_flux_{day}_res" + str(RESOLUTION) + "km.nc"
     params:
@@ -148,7 +183,8 @@ rule narrowband_to_broadband:
         lambda_center=float(config["lambda_center"])
     shell:
         "PYTHONPATH=src python scripts/narrowband_to_broadband.py --day {wildcards.day} "
-        "--resolution {params.resolution} --lambda_center {params.lambda_center}"
+        "--resolution {params.resolution} --lambda_center {params.lambda_center} "
+        "--coefficients-file {input.coefficients}"
 
 
 rule monthly_flux:

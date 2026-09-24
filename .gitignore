@@ -20,3 +20,6 @@ __pycache__/
 data/.workflow/
 data/models/selected_n_components*.json
 figures/*.csv
+
+# SBDART "Sunny" scene library (large, externally generated, not versioned)
+data/Sunny/

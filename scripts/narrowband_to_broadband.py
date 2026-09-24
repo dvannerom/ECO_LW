@@ -5,7 +5,7 @@ import argparse
 from sklearn.preprocessing import PolynomialFeatures
 import psutil
 import os
-from broadband import cubic_regression
+from broadband import cubic_regression, load_cubic_coefficients
 from netcdf_io import load_data, write_dataset
 
 if __name__ == '__main__':
@@ -14,11 +14,23 @@ if __name__ == '__main__':
 	parser.add_argument("-d","--day", type=int, default=245)
 	parser.add_argument("-r","--resolution", type=int, default=2)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
+	parser.add_argument(
+		"--coefficients-file", type=str,
+		default="data/models/narrowband_to_broadband_coeffs.json",
+		help="JSON produced by scripts/compute_temperature_SBDART.py; "
+		     "falls back to the built-in defaults in src/broadband.py if missing",
+	)
 	args = parser.parse_args()
 	
 	day = args.day	
 	res = args.resolution
 	lambda_center = args.lambda_center
+
+	if os.path.exists(args.coefficients_file):
+		cubic_coeff, cubic_intercept = load_cubic_coefficients(args.coefficients_file)
+	else:
+		print(f"{args.coefficients_file} not found, using built-in default cubic coefficients")
+		cubic_coeff, cubic_intercept = None, None
 
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
@@ -184,14 +196,20 @@ if __name__ == '__main__':
 	sigma = 5.670374E-08
 
 	rad_G16 = load_satellite_bt("G16")
-	Tbb_G16 = cubic_regression(rad_G16)
+	if cubic_coeff is not None:
+		Tbb_G16 = cubic_regression(rad_G16, cubic_coeff, cubic_intercept)
+	else:
+		Tbb_G16 = cubic_regression(rad_G16)
 	del rad_G16
 	flux_G16 = sigma*np.power(Tbb_G16,4)
 	del Tbb_G16
 	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
 	rad_G18 = load_satellite_bt("G18")
-	Tbb_G18 = cubic_regression(rad_G18)
+	if cubic_coeff is not None:
+		Tbb_G18 = cubic_regression(rad_G18, cubic_coeff, cubic_intercept)
+	else:
+		Tbb_G18 = cubic_regression(rad_G18)
 	del rad_G18
 	flux_G18 = sigma*np.power(Tbb_G18,4)
 	del Tbb_G18
