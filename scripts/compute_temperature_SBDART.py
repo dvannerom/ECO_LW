@@ -1,8 +1,8 @@
 """Fit narrowband-to-broadband regression coefficients from the SBDART "Sunny" scene library.
 
 For every simulated clear-sky/cloudy scene in data/Sunny/, the TOA broadband
-flux and per-GOES-channel nadir radiances are integrated from the spectral
-curve, converted to an effective narrowband brightness temperature via a
+flux and per-GOES-channel fluxes are integrated from the upward spectral flux,
+converted to an effective narrowband brightness temperature via a
 sensor-emulation power law, and regressed (linear/quadratic/cubic polynomial)
 against the broadband-equivalent temperature. The fitted cubic coefficients
 are what src/broadband.py's cubic_regression() applies operationally.
@@ -40,19 +40,17 @@ DEFAULT_CHANNEL_B = np.array([7.99453640e+00, 6.07740875e+00, 5.41373985e+00, 4.
 
 
 def load_sunny_scene(path, lambdas_goes, response_goes):
-	"""Integrate one SBDART "Sunny" spectral curve into broadband flux and channel radiances.
+	"""Integrate one SBDART spectrum into broadband and GOES-channel fluxes.
 
 	:param path: (Path) sunny_lw_* file. Columns: wavelength[um], upward TOA
 		flux[W/m2/um], nadir (0 deg VZA) radiance[W/m2/um/sr], ...
 	:param lambdas_goes: (list[ndarray]) per-channel filter wavelengths[um]
 	:param response_goes: (list[ndarray]) per-channel filter responses
-	:return: (float, ndarray[6]) broadband flux[W/m2], per-channel integrated radiance[W/m2/sr]
+	:return: (float, ndarray[6]) broadband flux[W/m2], SRF-weighted channel fluxes[W/m2]
 	"""
 	data = np.loadtxt(path)
 	wavelength = data[:, 0]
 	flux = data[:, 1]
-	radiance_nadir = data[:, 2]
-
 	flux_bb = integrate.simpson(flux, wavelength, axis=0)
 
 	response = np.stack(
@@ -62,8 +60,8 @@ def load_sunny_scene(path, lambdas_goes, response_goes):
 		],
 		axis=1,
 	)
-	radiance_nb = integrate.simpson(radiance_nadir[:, None] * response, wavelength, axis=0)
-	return flux_bb, radiance_nb
+	flux_nb = integrate.simpson(flux[:, None] * response, wavelength, axis=0)
+	return flux_bb, flux_nb
 
 
 def fit_regressions(t_narrowband, t_broadband):

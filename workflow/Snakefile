@@ -90,7 +90,7 @@ rule classify_scene:
         lambda_center=float(config["lambda_center"])
     shell:
         "PYTHONPATH=src python scripts/scene_id_pca.py --input_file {input.data} "
-		"--model {input.model} --lambda_center {params.lambda_center}"
+        "--model {input.model} --lambda_center {params.lambda_center}"
 
 
 rule fit_adm:
@@ -110,7 +110,7 @@ rule fit_adm:
         "mkdir -p data/.workflow && "
         "PYTHONPATH=src python scripts/fit_ADM.py --day {wildcards.day} "
         "--resolution {params.resolution} --n-components {params.n_components} "
-		"&& "
+        "&& "
         "touch data/.workflow/adm_{wildcards.day}_complete"
 
 
@@ -149,7 +149,7 @@ rule fit_channel_power_law:
         filter_dir=GOES_FILTER_DIR
     shell:
         "PYTHONPATH=src python scripts/fit_irradiance.py "
-		"--filter-dir {params.filter_dir} --output {output}"
+        "--filter-dir {params.filter_dir} --output {output}"
 
 
 rule fit_narrowband_to_broadband_coeffs:
@@ -165,7 +165,7 @@ rule fit_narrowband_to_broadband_coeffs:
     shell:
         "PYTHONPATH=src python scripts/compute_temperature_SBDART.py "
         "--sunny-dir {params.sunny_dir} --filter-dir {params.filter_dir} "
-		"--power-law-file {input.power_law} --output {output}"
+        "--power-law-file {input.power_law} --output {output}"
 
 
 rule narrowband_to_broadband:
@@ -199,4 +199,4 @@ rule monthly_flux:
     shell:
         "PYTHONPATH=src python scripts/monthly_flux.py --inputs {input.broadband} "
         "--reference-data {input.reference} --output {output} "
-		"--resolution {params.resolution} --lambda-center {params.lambda_center}"
+        "--resolution {params.resolution} --lambda-center {params.lambda_center}"

@@ -50,18 +50,6 @@ if __name__ == '__main__':
 	rad_G18 = preprocessed_data['rad_G18_interp_corr']
 	#BT_G16 = npz_datafile['BT_G16_interp_corr'][:,:,[0,3,4,6,7,8]]
 	#BT_G18 = npz_datafile['BT_G18_interp_corr'][:,:,[0,3,4,6,7,8]]
-	for name, arr in [                                   
-	    ("rad_G16", rad_G16),                            
-	    ("rad_G18", rad_G18),                            
-	    #("BT_G16", BT_G16),
-	    #("BT_G18", BT_G18),
-	]:
-		print(
-		    name,
-		    arr.shape,
-		    arr.dtype,
-		    f"{arr.nbytes / 1024**3:.2f} GB"
-		)
 	# Flatten arrays; select the six ADM channels by index below without copying
 	# the full radiance cubes.
 	rad_G16_flat = rad_G16.reshape(-1, rad_G16.shape[-1])

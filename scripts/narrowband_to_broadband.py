@@ -2,7 +2,6 @@ import numpy as np
 import cartopy.crs as ccrs
 import argparse
 from sklearn.preprocessing import PolynomialFeatures
-import psutil
 import os
 from broadband import cubic_regression, load_cubic_coefficients
 from netcdf_io import load_data, write_dataset
@@ -31,8 +30,6 @@ if __name__ == '__main__':
 		print(f"{args.coefficients_file} not found, using built-in default cubic coefficients")
 		cubic_coeff, cubic_intercept = None, None
 
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
-
 	# Only lat/lon are needed here; the preprocessed file also holds several
 	# (y, x, channel) radiance/BT/lza variables (~3.8 GB each) that must not be
 	# loaded into memory for this step.
@@ -45,7 +42,6 @@ if __name__ == '__main__':
 	lon_interp_grid = preprocessed_data['lon_interp_grid']
 	#lza_interp_grid_G16 = npzfile['lza_G16_interp_corr']
 	#lza_interp_grid_G18 = npzfile['lza_G18_interp_corr']
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
 	# Retrieve radiances
 	#npzfile_CH0 = np.load("data/narrowband_flux/narrowband_flux_"+str(day)+"_res"+str(res)+"km_C0.npz")
@@ -90,7 +86,6 @@ if __name__ == '__main__':
 				variable_names=(var_name,),
 			)
 			rad[:, ch] = f[var_name].ravel()
-		np.nan_to_num(rad, copy=False)
 		return rad
 
 	# GOES channels 08, 11, 12, 14, 15, 16
@@ -140,7 +135,6 @@ if __name__ == '__main__':
 	#poly3 = PolynomialFeatures(degree=3, include_bias=False)
 	#rad_G16_poly3 = poly3.fit_transform(rad_G16)
 	#rad_G18_poly3 = poly3.fit_transform(rad_G18)
-	#print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
 	coeff_linear = [0.20605798,0.01805503,0.14840809,0.25119058,0.07625716,0.15832402]
 	intercept_linear = 35.34936733219382
@@ -202,7 +196,6 @@ if __name__ == '__main__':
 	del rad_G16
 	flux_G16 = sigma*np.power(Tbb_G16,4)
 	del Tbb_G16
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
 	rad_G18 = load_satellite_bt("G18")
 	if cubic_coeff is not None:
@@ -212,7 +205,6 @@ if __name__ == '__main__':
 	del rad_G18
 	flux_G18 = sigma*np.power(Tbb_G18,4)
 	del Tbb_G18
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 
 	#plt.hist(flux_G16[(flux_G16>50) & (flux_G16<1e03)],100)
 	#plt.savefig("figures/flux_G16.png")
@@ -229,9 +221,7 @@ if __name__ == '__main__':
 	#flux_G18 = rad_G18_poly3 @ coeff_cubic + intercept_cubic
 
 	flux_G16[(flux_G16<50) | (flux_G16>1e03)] = np.nan
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 	flux_G18[(flux_G18<50) | (flux_G18>1e03)] = np.nan
-	print(psutil.Process(os.getpid()).memory_info().rss / 1024**3,"GB")
 	#flux_G16[(flux_G16<50) | (flux_G16>1e03) | (lza_interp_grid_G16.ravel()>70) | (lza_interp_grid_G18.ravel()>70)] = np.nan
 	#flux_G18[(flux_G18<50) | (flux_G18>1e03) | (lza_interp_grid_G16.ravel()>70) | (lza_interp_grid_G18.ravel()>70)] = np.nan
 	flux_G16 = flux_G16.reshape(shape_x,shape_y)

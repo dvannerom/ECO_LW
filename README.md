@@ -23,6 +23,69 @@ snakemake -s workflow/Snakefile --configfile config.yaml -n
 snakemake -s workflow/Snakefile --configfile config.yaml --cores 8
 ```
 
+### Run an individual step
+
+The following direct script commands match the current `config.yaml` example
+(day 245, 2 km resolution, step 1, 5 scene components, and lambda center -106).
+Run them from the repository root and adjust the arguments and paths when using
+different data. Unlike Snakemake, these commands do not run missing upstream
+steps for you, so run the steps in order and make sure their input files exist.
+
+```bash
+# Preprocess the training day (and each day to be processed).
+PYTHONPATH=src python scripts/preprocess_data_ABI.py \
+	--day 245 --step 1 --res_km 2 --lambda_center -106
+
+# Train the scene model using the preprocessed training file.
+PYTHONPATH=src python scripts/train_GMM.py \
+	--input_file data/preprocessed_files/abi_245_res2km_step1.nc \
+	--n_components 5 \
+	--n_components_file data/models/selected_n_components.json \
+	--use_pca
+
+# Classify the preprocessed day with the trained model.
+PYTHONPATH=src python scripts/scene_id_pca.py \
+	--input_file data/preprocessed_files/abi_245_res2km_step1.nc \
+	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib \
+	--lambda_center -106
+
+# Fit ADMs for all channels and scenes for the day.
+PYTHONPATH=src python scripts/fit_ADM.py \
+	--day 245 --resolution 2 --n-components 5
+
+# Convert radiances to narrowband fluxes for the day.
+PYTHONPATH=src python scripts/radiance_to_flux.py \
+	--day 245 --resolution 2 --n-components 5 --lambda_center -106
+
+# Fit the channel radiance power-law used by the broadband calibration.
+PYTHONPATH=src python scripts/fit_irradiance.py \
+	--filter-dir data/goes_channels \
+	--output data/models/channel_radiance_power_law.json
+
+# Fit the narrowband-to-broadband coefficients.
+PYTHONPATH=src python scripts/compute_temperature_SBDART.py \
+	--sunny-dir data/Sunny --filter-dir data/goes_channels \
+	--power-law-file data/models/channel_radiance_power_law.json \
+	--output data/models/narrowband_to_broadband_coeffs.json
+
+# Convert the day's narrowband fluxes to broadband flux.
+PYTHONPATH=src python scripts/narrowband_to_broadband.py \
+	--day 245 --resolution 2 --lambda_center -106 \
+	--coefficients-file data/models/narrowband_to_broadband_coeffs.json
+
+# Aggregate daily broadband flux files (add one --inputs path per day).
+PYTHONPATH=src python scripts/monthly_flux.py \
+	--inputs data/broadband_flux/broadband_flux_245_res2km.nc \
+	--reference-data data/preprocessed_files/abi_245_res2km_step1.nc \
+	--output data/monthly/monthly_flux_res2km.nc \
+	--resolution 2 --lambda-center -106
+```
+
+The model filename includes the number of training files and the selected
+component count. Update its path if either changes. For monthly aggregation,
+include every configured daily broadband file after `--inputs`; use the
+preprocessed file for the first configured day as `--reference-data`.
+
 Snakemake tracks preprocessing, scene classification, ADM fitting, narrowband
 conversion, broadband conversion, and monthly aggregation as separate stages.
 Completed daily products are reused automatically, and a failed stage can be
@@ -30,8 +93,7 @@ resumed without restarting earlier stages. The legacy ADM and radiance scripts
 write several products in one invocation; the workflow records per-day
 completion markers for those batch operations.
 
-The compute-stage scripts no longer take `--no-plot` flags. Plotting is kept as
-an explicit offline step after the products have been written to disk.
+Plotting is kept as an explicit offline step after the products have been written to disk.
 
 ## Offline plotting
 
@@ -53,7 +115,7 @@ PYTHONPATH=src python plotting/plot_gmm_diagnostics.py \
 	data/preprocessed_files/abi_271_res2km_step1.nc \
 	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib
 
-# Plot an ADM fit for a specific day/channel/scene pair
+# Plot an ADM fit for a specific day/channel/scene set
 python plotting/plot_fit_ADM.py --day 271 --resolution 2 --n-components 5 --channel 0 --scene 0
 
 # Compare G16-G18 radiance differences before and after ADM correction

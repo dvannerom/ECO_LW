@@ -23,7 +23,7 @@ def plot_scene_id(
     lambda_center=-106,
     model_file=None,
     label_order="stored",
-    source_order="c14_btd14_08",
+    source_order="c14",
 ):
     dataset = load_data(scene_file)
     lat = dataset["lat"]

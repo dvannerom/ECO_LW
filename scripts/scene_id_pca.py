@@ -27,7 +27,7 @@ if __name__ == '__main__':
 	parser.add_argument(
 		"--label-order",
 		choices=("c14", "c14_btd14_08"),
-		default="c14_btd14_08",
+		default="c14",
 		help="Ordering from cold/icy to hot/clear (default: c14_btd14_08)",
 	)
 	args = parser.parse_args()
