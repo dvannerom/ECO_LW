@@ -331,6 +331,12 @@ if __name__ == '__main__':
 	)
 	writer = PreprocessedWriter(output_path, height, width)
 	try:
+		# Saved so average_resolution.py can reconstruct this exact sinusoidal grid at a coarser resolution.
+		writer.dataset.setncattr("lambda_center", lambda_center)
+		writer.dataset.setncattr("xmin", xmin)
+		writer.dataset.setncattr("ymin", ymin)
+		writer.dataset.setncattr("res_m", res_m)
+		writer.dataset.setncattr("authalic_radius", Rq)
 		writer.write_scalar("width", width)
 		writer.write_scalar("height", height)
 		writer.write_scalar("step", step)

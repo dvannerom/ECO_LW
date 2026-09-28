@@ -73,6 +73,14 @@ PYTHONPATH=src python scripts/narrowband_to_broadband.py \
 	--day 245 --resolution 2 --lambda_center -106 \
 	--coefficients-file data/models/narrowband_to_broadband_coeffs.json
 
+# Optional: degrade an existing preprocessed file to a coarser resolution
+# (e.g. 2 km -> 6 km with block size 3) to study the impact of resolution
+# on the rest of the workflow. This writes a new preprocessed file that can
+# be used as a drop-in input to the resolution's downstream steps above.
+PYTHONPATH=src python scripts/average_resolution.py \
+	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
+	--block-size 3
+
 # Aggregate daily broadband flux files (add one --inputs path per day).
 PYTHONPATH=src python scripts/monthly_flux.py \
 	--inputs data/broadband_flux/broadband_flux_245_res2km.nc \
