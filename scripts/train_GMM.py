@@ -18,6 +18,9 @@ if __name__ == '__main__':
 		help="JSON file from find_nComponents.py; overrides -n with its selected n_components")
 	parser.add_argument("--use_pca", action="store_true", help="Enable PCA before GMM")
 	parser.add_argument("--pca_var", type=float, default=0.98, help="Cumulative variance to keep (e.g., 0.98)")
+	parser.add_argument("--points_per_file", type=int, default=2_000_000,
+		help="Max valid-pixel rows sampled per input file before fitting (caps total EM cost)")
+	parser.add_argument("--seed", type=int, default=42, help="RNG seed for per-file subsampling")
 	args = parser.parse_args()
 	
 	input_file = args.input_file
@@ -33,13 +36,24 @@ if __name__ == '__main__':
 		print(f"Using n_components={n_components} from {args.n_components_file}")
 	use_pca = args.use_pca
 	pca_var = args.pca_var
-	
+	points_per_file = args.points_per_file
+
+	# Independent per-file RNG substreams so the sample is identical regardless
+	# of input_file ordering (same pattern as find_nComponents.py).
+	seed_sequences = np.random.SeedSequence(args.seed).spawn(len(input_file))
+
 	BT_arrays = []
 
-	for f in input_file:	
-		BT_arrays.append(build_scene_features(f, pixel_step=3)[0])
+	for f, seed_sequence in zip(input_file, seed_sequences):
+		features = build_scene_features(f, pixel_step=3)[0]
+		rng = np.random.default_rng(seed_sequence)
+		selection = rng.choice(features.shape[0], min(points_per_file, features.shape[0]), replace=False)
+		BT_arrays.append(features[selection])
+		print(f"{f}: sampled {selection.size} of {features.shape[0]} valid rows")
 
-	BT_merged = np.concatenate(BT_arrays, axis=0)
+	# float64 avoids spurious non-positive-definite covariances in GaussianMixture's Cholesky step
+	# (the 6 channel-average + 4 BTD feature columns are exact linear combinations of each other).
+	BT_merged = np.concatenate(BT_arrays, axis=0).astype(np.float64, copy=False)
 
 	print(BT_merged.shape)
 	
@@ -76,7 +90,8 @@ if __name__ == '__main__':
 				n_components=n_components,
 				n_init=5,
 				covariance_type="full",
-				random_state=42)
+				random_state=42,
+				reg_covar=1e-6)
 		)
 	)
 

@@ -33,6 +33,11 @@ lambda_center: -106
 scene_components: 5
 selected_n_components_file: data/models/selected_n_components.json
 
+# Per-file valid-pixel subsampling cap for train_GMM.py (keeps GaussianMixture's
+# EM cost bounded regardless of how many training_files/days are merged).
+training_points_per_file: 2000000
+training_seed: 42
+
 # SBDART "Sunny" clear-sky/cloudy scene library used to fit the
 # narrowband-to-broadband regression coefficients (see scripts/compute_temperature_SBDART.py).
 sunny_dir: data/Sunny
