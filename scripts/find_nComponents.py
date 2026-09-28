@@ -459,8 +459,8 @@ def main():
 	parser.add_argument("--max-points", type=int, default=100000)
 	parser.add_argument("--stability-repeats", type=int, default=3)
 	parser.add_argument("--seed", type=int, default=42)
-	parser.add_argument("--output-csv", default="figures/gmm_component_diagnostics.csv")
-	parser.add_argument("--output-plot", default="figures/gmm_component_diagnostics.png")
+	parser.add_argument("--output-csv", default="figures/gmm_diagnostics/gmm_component_diagnostics.csv")
+	parser.add_argument("--output-plot", default="figures/gmm_diagnostics/gmm_component_diagnostics.png")
 	parser.add_argument("--selection-output", default="data/models/selected_n_components.json",
 		help="JSON file written with the selected n_components, consumable by train_GMM.py --n-components-file")
 	parser.add_argument("--exact-shortlist-size", type=int, default=5,

@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from scipy.stats import norm
 import math
 import argparse
+from pathlib import Path
 from geospatial import normalize_longitude
 
 to_minus180_180 = normalize_longitude
@@ -18,10 +19,13 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="sample argument parser")
 	parser.add_argument("-f","--input_file", type=str)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
+	parser.add_argument("--output-dir", type=str, default="figures/parallax")
 	args = parser.parse_args()
 	
 	input_file = args.input_file
 	lambda_center = args.lambda_center
+	output_dir = Path(args.output_dir)
+	output_dir.mkdir(parents=True, exist_ok=True)
 
 	# Retrieve data
 	dataset = load_data(input_file)
@@ -44,7 +48,7 @@ if __name__ == '__main__':
 	fig.colorbar(im0, ax=axs[0], orientation='vertical', pad=0.05, shrink=0.8)
 	im1 = axs[1].imshow(lon_interp_grid)#, vmin=-175, vmax=-50)
 	fig.colorbar(im1, ax=axs[1], orientation='vertical', pad=0.05, shrink=0.8)
-	plt.savefig("figures/lat_lon_grid.png")
+	plt.savefig(output_dir / "lat_lon_grid.png")
 	plt.close()
 
 	#mask = (rad_C14_interp_G16 == 0) | (rad_C14_interp_G18 == 0)
@@ -80,7 +84,7 @@ if __name__ == '__main__':
 	plt.hist(diff_corr.flatten(),100,alpha=0.5,color='r')
 	plt.yscale('log')
 	fig.tight_layout()
-	plt.savefig("figures/parallax_hist.png")
+	plt.savefig(output_dir / "parallax_hist.png")
 	plt.close()
 
 	# Draw parallax effect before and after correction
@@ -118,5 +122,5 @@ if __name__ == '__main__':
 	gl2 = axs[2].gridlines(crs=ccrs.PlateCarree(), draw_labels=True, linewidth=1, color='black', linestyle='--', xlocs=range(-180,180,30), ylocs=range(-90,90,30))
 	cbar = fig.colorbar(pc2, ax=axs[2], orientation="vertical", shrink=0.7)
 	fig.tight_layout()
-	plt.savefig("figures/parallax.png")
+	plt.savefig(output_dir / "parallax.png")
 	plt.show()
