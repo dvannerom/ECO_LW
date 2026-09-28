@@ -126,6 +126,9 @@ PYTHONPATH=src python plotting/plot_gmm_diagnostics.py \
 # Plot an ADM fit for a specific day/channel/scene set
 python plotting/plot_fit_ADM.py --day 271 --resolution 2 --n-components 5 --channel 0 --scene 0
 
+# Compare the fitted ADM curves of all scenes for one day/channel
+PYTHONPATH=src python plotting/plot_ADMs.py --day 271 --resolution 2 --channel 0 --n-components 5
+
 # Compare G16-G18 radiance differences before and after ADM correction
 python plotting/plot_radiance_difference.py --day 271 --resolution 2 --channel 0
 
