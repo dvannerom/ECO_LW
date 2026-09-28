@@ -2,30 +2,30 @@
 # Paths are relative to the repository root.
 days:
   - 245
-  # - 246
-  # - 247
-  # - 249
-  # - 250
-  # - 251
-  # - 252
-  # - 254
-  # - 255
-  # - 256
-  # - 257
-  # - 258
-  # - 259
-  # - 261
-  # - 262
-  # - 263
-  # - 264
-  # - 265
-  # - 266
-  # - 268
-  # - 269
-  # - 270
-  # - 271
-  # - 273
-  # - 274
+  - 246
+  - 247
+  - 249
+  - 250
+  - 251
+  - 252
+  - 254
+  - 255
+  - 256
+  - 257
+  - 258
+  - 259
+  - 261
+  - 262
+  - 263
+  - 264
+  - 265
+  - 266
+  - 268
+  - 269
+  - 270
+  - 271
+  - 273
+  - 274
 
 resolution_km: 2
 preprocess_step: 1
@@ -48,25 +48,25 @@ narrowband_to_broadband_coeffs_file: data/models/narrowband_to_broadband_coeffs.
 # Selected files used to train the scene classifier. Add more representative days as needed.
 training_files:
   - data/preprocessed_files/abi_245_res2km_step1.nc
-#  - data/preprocessed_files/abi_247_res2km_step1.nc
-#  - data/preprocessed_files/abi_249_res2km_step1.nc
-#  - data/preprocessed_files/abi_250_res2km_step1.nc
-#  - data/preprocessed_files/abi_251_res2km_step1.nc
-#  - data/preprocessed_files/abi_254_res2km_step1.nc
-#  - data/preprocessed_files/abi_255_res2km_step1.nc
-#  - data/preprocessed_files/abi_256_res2km_step1.nc
-#  - data/preprocessed_files/abi_257_res2km_step1.nc
-#  - data/preprocessed_files/abi_258_res2km_step1.nc
-#  - data/preprocessed_files/abi_261_res2km_step1.nc
-#  - data/preprocessed_files/abi_262_res2km_step1.nc
-#  - data/preprocessed_files/abi_263_res2km_step1.nc
-#  - data/preprocessed_files/abi_264_res2km_step1.nc
-#  - data/preprocessed_files/abi_266_res2km_step1.nc
-#  - data/preprocessed_files/abi_268_res2km_step1.nc
-#  - data/preprocessed_files/abi_269_res2km_step1.nc
-#  - data/preprocessed_files/abi_270_res2km_step1.nc
-#  - data/preprocessed_files/abi_273_res2km_step1.nc
-#  - data/preprocessed_files/abi_274_res2km_step1.nc
+  - data/preprocessed_files/abi_247_res2km_step1.nc
+  - data/preprocessed_files/abi_249_res2km_step1.nc
+  - data/preprocessed_files/abi_250_res2km_step1.nc
+  - data/preprocessed_files/abi_251_res2km_step1.nc
+  - data/preprocessed_files/abi_254_res2km_step1.nc
+  - data/preprocessed_files/abi_255_res2km_step1.nc
+  - data/preprocessed_files/abi_256_res2km_step1.nc
+  - data/preprocessed_files/abi_257_res2km_step1.nc
+  - data/preprocessed_files/abi_258_res2km_step1.nc
+  - data/preprocessed_files/abi_261_res2km_step1.nc
+  - data/preprocessed_files/abi_262_res2km_step1.nc
+  - data/preprocessed_files/abi_263_res2km_step1.nc
+  - data/preprocessed_files/abi_264_res2km_step1.nc
+  - data/preprocessed_files/abi_266_res2km_step1.nc
+  - data/preprocessed_files/abi_268_res2km_step1.nc
+  - data/preprocessed_files/abi_269_res2km_step1.nc
+  - data/preprocessed_files/abi_270_res2km_step1.nc
+  - data/preprocessed_files/abi_273_res2km_step1.nc
+  - data/preprocessed_files/abi_274_res2km_step1.nc
 
 model: data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib
 output:
