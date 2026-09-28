@@ -149,6 +149,13 @@ PYTHONPATH=src python plotting/plot_irradiance_fit.py \
 
 # Plot monthly mean G16 and G18 flux and their difference variability
 python plotting/plot_monthly_flux.py --input data/monthly/monthly_flux_res2km.nc
+
+# Bin the G16-G18 flux difference by viewing zenith angle and plot its mean
+# and standard deviation (pass several --inputs for a multi-day aggregate)
+PYTHONPATH=src python plotting/plot_broadband_flux_lza_binned.py \
+	--inputs data/broadband_flux/broadband_flux_271_res2km.nc \
+	--reference-data data/preprocessed_files/abi_271_res2km_step1.nc \
+	--tag 271
 ```
 
 These scripts read the saved NetCDF products and model artifacts and create PNG
