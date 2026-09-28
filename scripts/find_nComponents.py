@@ -2,7 +2,10 @@
 import argparse
 import csv
 import json
+import multiprocessing
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,7 +13,6 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
 	sys.path.insert(0, str(SRC))
 
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.spatial.distance import jensenshannon
@@ -18,6 +20,7 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import adjusted_rand_score
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
+from threadpoolctl import threadpool_limits
 
 from adm import radiance_linear, radiance_linear_ratio
 from adm_fitting import correct_radiance, fit_adm_scene
@@ -31,9 +34,24 @@ CHANNEL_INDICES = (0, 3, 4, 6, 7, 8)
 FLUX_SIGMA = 5.670374e-08
 MIN_TRAIN_POINTS = 50
 MIN_EVAL_POINTS = 10
+# Conservative peak RSS per build_scene_features() worker (chunk buffers at the default
+# chunk_rows/pixel_step=3), used to cap --load-jobs so it can't OOM-kill the pool.
+LOAD_WORKER_MEMORY_BUDGET_BYTES = 8 * 1024**3
 
 
-def fit_candidate(features, n_components, use_pca, pca_var, random_state):
+def _available_memory_bytes():
+	"""Linux-only best-effort read of MemAvailable; returns None if unavailable (e.g. non-Linux)."""
+	try:
+		with open("/proc/meminfo") as handle:
+			for line in handle:
+				if line.startswith("MemAvailable:"):
+					return int(line.split()[1]) * 1024
+	except OSError:
+		pass
+	return None
+
+
+def fit_candidate(features, n_components, use_pca, pca_var, random_state, report_n_pc=False):
 	scaler = StandardScaler()
 	# float64 avoids spurious non-positive-definite covariances in GaussianMixture's Cholesky step.
 	scaled = scaler.fit_transform(features).astype(np.float64, copy=False)
@@ -43,6 +61,8 @@ def fit_candidate(features, n_components, use_pca, pca_var, random_state):
 		full_pca = PCA(svd_solver="full")
 		full_pca.fit(scaled)
 		n_pc = int(np.searchsorted(np.cumsum(full_pca.explained_variance_ratio_), pca_var) + 1)
+		if report_n_pc:
+			print("n_pc = "+str(n_pc))
 		pca = PCA(n_components=n_pc, svd_solver="full", whiten=False)
 		transformed = pca.fit_transform(scaled)
 
@@ -116,6 +136,22 @@ def load_observations(path, valid_flat, sample_indices):
 		data["planck_G16"],
 		data["planck_G18"],
 	)
+
+
+def _load_input_file(path, points_per_file, seed):
+	"""Sample one --input-file path (process-pool entry point, order-independent RNG)."""
+	rng = np.random.default_rng(seed)
+	features, valid_flat, _, _, _ = build_scene_features(path, pixel_step=3)
+	selection = rng.choice(features.shape[0], min(points_per_file, features.shape[0]), replace=False)
+	return features[selection], load_observations(path, valid_flat, selection)
+
+
+def _load_validation_file(path, max_points, seed):
+	"""Sample one --validation-inputs path (process-pool entry point, order-independent RNG)."""
+	rng = np.random.default_rng(seed)
+	validation_features, valid_flat, _, _, _ = build_scene_features(path, pixel_step=3)
+	selection = rng.choice(validation_features.shape[0], min(max_points, validation_features.shape[0]), replace=False)
+	return validation_features[selection], path, load_observations(path, valid_flat, selection)
 
 
 def fit_adm_and_score(train_obs, train_labels, test_obs, test_labels, n_components):
@@ -381,12 +417,34 @@ def evaluate_exact_candidate(n_components, train_obs, train_labels, eval_sets):
 	)
 
 
+def evaluate_candidate_worker(n_components, threads_per_worker, args):
+	"""Process-pool entry point: caps BLAS threads so concurrent workers don't oversubscribe cores."""
+	with threadpool_limits(limits=threads_per_worker):
+		return n_components, evaluate_candidate(n_components, *args)
+
+
+_worker_shared_args = None
+_worker_threads_per_worker = 1
+
+
+def _init_worker(threads_per_worker, shared_args):
+	"""Runs once per spawned worker process, so shared_args is only pickled/sent `jobs` times, not once per task."""
+	global _worker_shared_args, _worker_threads_per_worker
+	_worker_threads_per_worker = threads_per_worker
+	_worker_shared_args = shared_args
+
+
+def _evaluate_candidate_in_worker(n_components):
+	return evaluate_candidate_worker(n_components, _worker_threads_per_worker, _worker_shared_args)
+
+
 def evaluate_candidate(
 	n_components, train_features, test_features, train_obs, test_obs,
-	validation_sets, use_pca, pca_var, random_state, stability_repeats,
+	validation_sets, use_pca, pca_var, random_state, stability_repeats, report_n_pc_candidate,
 ):
 	scaler, pca, model, transformed_train = fit_candidate(
-		train_features, n_components, use_pca, pca_var, random_state
+		train_features, n_components, use_pca, pca_var, random_state,
+		report_n_pc=n_components == report_n_pc_candidate,
 	)
 	transformed_test, test_labels = transform_predict(test_features, scaler, pca, model)
 	train_labels = model.predict(transformed_train)
@@ -455,12 +513,13 @@ def main():
 	parser.add_argument("--use-pca", action="store_true")
 	parser.add_argument("--pca-var", type=float, default=0.98)
 	parser.add_argument("--min-components", type=int, default=2)
-	parser.add_argument("--max-components", type=int, default=19)
-	parser.add_argument("--max-points", type=int, default=100000)
+	parser.add_argument("--max-components", type=int, default=15)
+	parser.add_argument("--max-points", type=int, default=250000)
 	parser.add_argument("--stability-repeats", type=int, default=3)
+	parser.add_argument("--jobs", type=int, default=1, help="Parallel worker processes, one per n_components candidate")
+	parser.add_argument("--load-jobs", type=int, default=1, help="Parallel worker processes for loading/featurizing input+validation files")
 	parser.add_argument("--seed", type=int, default=42)
 	parser.add_argument("--output-csv", default="figures/gmm_diagnostics/gmm_component_diagnostics.csv")
-	parser.add_argument("--output-plot", default="figures/gmm_diagnostics/gmm_component_diagnostics.png")
 	parser.add_argument("--selection-output", default="data/models/selected_n_components.json",
 		help="JSON file written with the selected n_components, consumable by train_GMM.py --n-components-file")
 	parser.add_argument("--exact-shortlist-size", type=int, default=5,
@@ -480,13 +539,51 @@ def main():
 	rng = np.random.default_rng(args.seed)
 
 	# Build one reproducible train/test pool across all training days.
-	features_parts, observation_parts = [], []
+	all_paths = list(args.input_file) + list(args.validation_inputs)
+	# Independent per-file seeds (not one shared advancing RNG) so results don't depend on
+	# load order/concurrency -- required for --load-jobs to be reproducible.
+	file_seeds = np.random.SeedSequence(args.seed).spawn(len(all_paths))
 	points_per_file = max(2, args.max_points // len(args.input_file))
-	for path in args.input_file:
-		features, valid_flat, _, _, _ = build_scene_features(path, pixel_step=3)
-		selection = rng.choice(features.shape[0], min(points_per_file, features.shape[0]), replace=False)
-		features_parts.append(features[selection])
-		observation_parts.append(load_observations(path, valid_flat, selection))
+	# Cap by cpu_count and by available RAM, so a large --load-jobs can't OOM-kill the pool
+	# (each worker peaks at roughly LOAD_WORKER_MEMORY_BUDGET_BYTES while chunking a file).
+	load_jobs = max(1, min(args.load_jobs, len(all_paths), os.cpu_count() or len(all_paths)))
+	available_memory = _available_memory_bytes()
+	if available_memory is not None:
+		memory_capped_jobs = max(1, available_memory // LOAD_WORKER_MEMORY_BUDGET_BYTES)
+		if memory_capped_jobs < load_jobs:
+			print(
+				f"Capping --load-jobs from {load_jobs} to {memory_capped_jobs} "
+				f"(~{available_memory / 1024**3:.0f} GiB available / "
+				f"~{LOAD_WORKER_MEMORY_BUDGET_BYTES / 1024**3:.0f} GiB per worker)"
+			)
+			load_jobs = memory_capped_jobs
+
+	if load_jobs == 1:
+		input_results = [
+			_load_input_file(path, points_per_file, file_seeds[index])
+			for index, path in enumerate(args.input_file)
+		]
+		validation_results = [
+			_load_validation_file(path, args.max_points, file_seeds[len(args.input_file) + index])
+			for index, path in enumerate(args.validation_inputs)
+		]
+	else:
+		print(f"Loading {len(all_paths)} files across {load_jobs} worker processes")
+		# spawn (not fork) avoids deadlocks from inheriting the parent's BLAS/OpenMP thread pools.
+		mp_context = multiprocessing.get_context("spawn")
+		with ProcessPoolExecutor(max_workers=load_jobs, mp_context=mp_context) as executor:
+			input_futures = [
+				executor.submit(_load_input_file, path, points_per_file, file_seeds[index])
+				for index, path in enumerate(args.input_file)
+			]
+			validation_futures = [
+				executor.submit(_load_validation_file, path, args.max_points, file_seeds[len(args.input_file) + index])
+				for index, path in enumerate(args.validation_inputs)
+			]
+			input_results = [future.result() for future in input_futures]
+			validation_results = [future.result() for future in validation_futures]
+
+	features_parts, observation_parts = zip(*input_results)
 	features = np.concatenate(features_parts, axis=0)
 	observations = tuple(
 		(np.concatenate([part[index] for part in observation_parts], axis=0) if index < 4 else observation_parts[0][index])
@@ -502,21 +599,45 @@ def main():
 	train_obs = tuple(value[train_selection] if index < 4 else value for index, value in enumerate(observations))
 	test_obs = tuple(value[test_selection] if index < 4 else value for index, value in enumerate(observations))
 
-	validation_sets = []
-	validation_obs_by_path = {}
-	for path in args.validation_inputs:
-		validation_features, valid_flat, _, _, _ = build_scene_features(path, pixel_step=3)
-		selection = rng.choice(validation_features.shape[0], min(args.max_points, validation_features.shape[0]), replace=False)
-		validation_sets.append((validation_features[selection], path))
-		validation_obs_by_path[path] = load_observations(path, valid_flat, selection)
+	validation_sets = [(validation_features, path) for validation_features, path, _ in validation_results]
+	validation_obs_by_path = {path: obs for _, path, obs in validation_results}
+
+	candidates = list(range(args.min_components, args.max_components + 1))
+	# Cap by cpu_count too, so a future wider --min/--max-components range can't oversubscribe cores.
+	jobs = max(1, min(args.jobs, len(candidates), os.cpu_count() or len(candidates)))
+	shared_args = (
+		train_features, test_features, train_obs, test_obs,
+		validation_sets, args.use_pca, args.pca_var, args.seed, args.stability_repeats,
+		candidates[0],
+	)
+	# Full-covariance GMM fits already use BLAS threading, so cap threads per worker to avoid oversubscribing cores.
+	threads_per_worker = max(1, (os.cpu_count() or 1) // jobs)
+	results = {}
+	if jobs == 1:
+		for n_components in candidates:
+			print(f"Evaluating {n_components} components")
+			_, result = evaluate_candidate_worker(n_components, threads_per_worker, shared_args)
+			results[n_components] = result
+	else:
+		print(f"Evaluating {len(candidates)} component counts across {jobs} worker processes")
+		# spawn (not fork) avoids deadlocks from inheriting the parent's BLAS/OpenMP thread pools.
+		mp_context = multiprocessing.get_context("spawn")
+		with ProcessPoolExecutor(
+			max_workers=jobs, mp_context=mp_context,
+			initializer=_init_worker, initargs=(threads_per_worker, shared_args),
+		) as executor:
+			futures = [
+				executor.submit(_evaluate_candidate_in_worker, n_components)
+				for n_components in candidates
+			]
+			for future in futures:
+				n_components, result = future.result()
+				print(f"Finished {n_components} components")
+				results[n_components] = result
 
 	rows, states = [], {}
-	for n_components in range(args.min_components, args.max_components + 1):
-		print(f"Evaluating {n_components} components")
-		row, state = evaluate_candidate(
-			n_components, train_features, test_features, train_obs, test_obs,
-			validation_sets, args.use_pca, args.pca_var, args.seed, args.stability_repeats,
-		)
+	for n_components in candidates:
+		row, state = results[n_components]
 		rows.append(row)
 		states[n_components] = state
 
@@ -653,113 +774,7 @@ def main():
 	else:
 		print(f"No candidate passed all criteria; wrote null selection to {selection_path}")
 
-	counts = [row["n_components"] for row in rows]
-	plot_path = Path(args.output_plot)
-	plot_path.parent.mkdir(parents=True, exist_ok=True)
-
-	fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-	axis = axes[0][0]
-	loglik = np.asarray([row["heldout_loglik"] for row in rows], dtype=float)
-	icl = np.asarray([row["icl"] for row in rows], dtype=float)
-	line1, = axis.plot(counts, loglik, marker="o", color="tab:blue", label="Held-out log likelihood")
-	axis.set_ylabel("Held-out log likelihood", color="tab:blue")
-	axis.tick_params(axis="y", labelcolor="tab:blue")
-	twin = axis.twinx()
-	line2, = twin.plot(counts, icl, marker="s", color="tab:orange", label="ICL")
-	twin.set_ylabel("ICL", color="tab:orange")
-	twin.tick_params(axis="y", labelcolor="tab:orange")
-	axis.set_title("Likelihood")
-	axis.grid(True, alpha=0.3)
-	axis.legend(handles=[line1, line2], loc="best", fontsize="small")
-
-	axis = axes[0][1]
-	ari_min = np.asarray([row["ari_min"] for row in rows], dtype=float)
-	ari_std = np.asarray([row["ari_std"] for row in rows], dtype=float)
-	axis.errorbar(counts, ari_min, yerr=ari_std, marker="o", capsize=4, label="ARI minimum +/- 1 std")
-	axis.set_title("Cluster reliability")
-	axis.set_ylabel("Adjusted Rand index")
-	axis.grid(True, alpha=0.3)
-	axis.legend(loc="best", fontsize="small")
-
-	axis = axes[1][0]
-	for name, label, marker in (
-		("adm_ratio_rmse", "Global ADM ratio RMSE", "o"),
-		("worst_channel_adm_rmse", "Worst-channel ADM RMSE", "s"),
-		("worst_scene_adm_rmse", "Worst-scene ADM RMSE", "^"),
-	):
-		values = np.asarray([row[name] for row in rows], dtype=float)
-		if np.isfinite(values).any():
-			axis.plot(counts, values, marker=marker, linewidth=1.5, label=label)
-	exact_counts = [row["n_components"] for row in rows if row["shortlisted"]]
-	for name, label, marker, color in (
-		("exact_adm_ratio_rmse", "Exact global ADM ratio RMSE", "D", "tab:red"),
-		("exact_worst_channel_adm_rmse", "Exact worst-channel ADM RMSE", "P", "tab:purple"),
-		("exact_worst_scene_adm_rmse", "Exact worst-scene ADM RMSE", "X", "tab:brown"),
-	):
-		values = [row[name] for row in rows if row["shortlisted"]]
-		axis.scatter(exact_counts, values, marker=marker, color=color, s=60, label=label, zorder=3)
-	axis.set_title("Physical ADM quality")
-	axis.set_ylabel("Radiance-ratio RMSE")
-	axis.set_xlabel("Number of GMM components")
-	axis.grid(True, alpha=0.3)
-	axis.legend(loc="best", fontsize="small")
-
-	axis = axes[1][1]
-	coverage = np.asarray([row["minimum_angular_coverage"] for row in rows], dtype=float)
-	line1, = axis.plot(counts, coverage, marker="o", color="tab:green", label="Minimum angular coverage")
-	exact_improvement = [row["exact_flux_improvement"] for row in rows if row["shortlisted"]]
-	line2 = axis.scatter(exact_counts, exact_improvement, marker="D", color="tab:red", label="Exact flux improvement", zorder=3)
-	axis.set_ylabel("Fraction (angular coverage / flux improvement)")
-	axis.set_ylim(-0.05, 1.05)
-	twin = axis.twinx()
-	exact_spread = [row["exact_corrected_flux_std"] for row in rows if row["shortlisted"]]
-	line3 = twin.scatter(exact_counts, exact_spread, marker="P", color="tab:purple", label="Exact corrected G16-G18 flux spread", zorder=3)
-	twin.set_ylabel("Exact corrected flux spread (W/m^2)", color="tab:purple")
-	twin.tick_params(axis="y", labelcolor="tab:purple")
-	axis.set_title("Physical coverage and production impact (exact, shortlisted only)")
-	axis.set_xlabel("Number of GMM components")
-	axis.grid(True, alpha=0.3)
-	axis.legend(handles=[line1, line2, line3], loc="best", fontsize="small")
-
-	fig.suptitle("GMM component diagnostics (native units)", fontsize=15)
-	fig.tight_layout()
-	fig.savefig(plot_path, dpi=150)
-	plt.close(fig)
-
-	criterion_names = (
-		("shortlisted", "Shortlisted"),
-		("criterion_adm_plateau", "ADM plateau"),
-		("criterion_occupancy", "Occupancy"),
-		("criterion_stability", "Stability"),
-		("criterion_angular_coverage", "Angular coverage"),
-		("criterion_adm_coverage", "ADM coverage"),
-		("criterion_exact_adm_coverage", "Exact ADM coverage"),
-		("criterion_exact_improvement", "Exact flux gain"),
-	)
-	criteria = np.asarray(
-		[[int(row[name]) for name, _ in criterion_names] for row in rows],
-		dtype=int,
-	)
-	first_passing = next((index for index, row in enumerate(rows) if row["all_criteria"]), None)
-	heatmap_path = plot_path.with_name(plot_path.stem + "_criteria.png")
-	fig, axis = plt.subplots(figsize=(12, max(4, len(rows) * 0.35)))
-	axis.imshow(criteria, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1)
-	axis.set_xticks(range(len(criterion_names)), [label for _, label in criterion_names], rotation=30, ha="right")
-	axis.set_yticks(range(len(counts)), counts)
-	axis.set_xlabel("Selection criterion")
-	axis.set_ylabel("Number of GMM components")
-	axis.set_title("Component-selection criteria: green = pass, red = fail")
-	if first_passing is not None:
-		axis.axhline(first_passing, color="black", linewidth=2, linestyle="--")
-		axis.text(len(criterion_names) - 0.5, first_passing, " first all-criteria pass", va="bottom", ha="right")
-	fig.tight_layout()
-	fig.savefig(heatmap_path, dpi=150)
-	plt.close(fig)
-
 	print(f"Diagnostics written to {output_path}")
-	print(f"Plot written to {plot_path}")
-	print(f"Criteria heatmap written to {heatmap_path}")
 	print("Interpretation: lower ADM RMSE, higher ARI, higher angular coverage, and higher exact flux improvement are preferred.")
 
 

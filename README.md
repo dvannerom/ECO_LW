@@ -171,16 +171,51 @@ Use `find_nComponents.py` to compare candidate scene counts before changing
 PYTHONPATH=src python scripts/find_nComponents.py \
 	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
 	--validation-inputs data/preprocessed_files/abi_271_res2km_step1.nc \
-	--use-pca --min-components 6 --max-components 16 --max-points 100000
+	--use-pca --min-components 6 --max-components 16 --max-points 100000 \
+	--jobs 11 --load-jobs 25
 ```
 
-The script writes a CSV, a 4-panel diagnostic figure, a criteria heatmap, and a
-JSON selection file. Cheap diagnostics run for every candidate; a shortlist
+The script writes a CSV and a JSON selection file. Plot the saved CSV separately
+with:
+
+```bash
+python plotting/plot_n_components.py \
+	--input-csv figures/gmm_diagnostics/gmm_component_diagnostics.csv
+```
+
+This creates a 4-panel diagnostic figure and a criteria heatmap alongside the
+CSV. The plotter accepts `--output-plot` to override the main figure path.
+Cheap diagnostics run for every candidate; a shortlist
 (smallest `--exact-shortlist-size` candidates passing the cheap criteria,
 default 5) is then re-evaluated with the exact production ADM fit
 (`src/adm_fitting.py`, matching `fit_ADM.py`/`radiance_to_flux.py`) and the
 exact cubic narrowband-to-broadband regression (`src/broadband.py`, matching
 `narrowband_to_broadband.py`).
+
+`--jobs` evaluates that many `n_components` candidates concurrently in
+separate worker processes (default 1, sequential); it is capped automatically
+to the number of candidates and to the machine's CPU count, so passing a large
+value (e.g. the candidate count) is safe. Each worker caps its own BLAS thread
+usage so the workers don't oversubscribe cores.
+
+`--load-jobs` similarly parallelizes the upstream step that reads and
+featurizes every `--input-file`/`--validation-inputs` file (also capped to the
+file count and CPU count). Loading is otherwise the dominant wall-clock cost
+with many days: `build_scene_features` keeps the large `BT_G16_interp`/
+`BT_G18_interp` variables disk-backed and reads them one row-chunk at a time
+rather than materializing the full ~3.8 GB array per variable up front, which
+also keeps concurrent workers' peak memory bounded to their current chunk
+rather than the whole file. `--load-jobs` is additionally capped using the
+node's currently available RAM (`/proc/meminfo`'s `MemAvailable`, Linux-only)
+divided by a conservative per-worker memory budget, printing a message when it
+downgrades the requested value; a worker OOM-killed by the kernel breaks the
+*entire* process pool (`BrokenProcessPool`), not just its own file, so this cap
+exists to prevent that failure mode on machines with many files but limited
+RAM per core. Per-file sampling uses an independent RNG substream
+(derived once from `--seed`, not one shared advancing generator), so results
+are identical regardless of `--load-jobs`/execution order, but the specific
+sampled points (and therefore exact metric values) differ from runs made
+before `--load-jobs` was introduced, even at the same `--seed`.
 
 Selection criteria:
 

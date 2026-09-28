@@ -16,11 +16,17 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scene_features import build_scene_features, scene_label_mapping
+from scene_features import (
+    CHANNEL_LABELS,
+    DIFFERENCE_LABELS,
+    FEATURE_GROUPS,
+    build_scene_features,
+    scene_label_mapping,
+)
 
 
-FEATURE_NAMES = ["C08_av", "C11_av", "C12_av", "C14_av", "C15_av", "C16_av"]
-DIFFERENCE_NAMES = ["BTD14-11", "BTD14-15", "BTD14-08", "BTD14-16"]
+FEATURE_NAMES = [f"{label}_av" for label in CHANNEL_LABELS]
+DIFFERENCE_NAMES = list(DIFFERENCE_LABELS)
 
 
 def heatmap(data, row_labels, col_labels, ax, cbarlabel, cmap, value_format):
@@ -58,8 +64,8 @@ def plot_scene_centroids(model_file, input_files, output_dir, label_order):
     for component in range(gmm.n_components):
         scene_id = label_mapping[component]
         component_features = features[component_labels == component]
-        centroids[scene_id] = np.mean(component_features[:, :6], axis=0)
-        centroids_diff[scene_id] = np.mean(component_features[:, 6:], axis=0)
+        centroids[scene_id] = np.mean(component_features[:, FEATURE_GROUPS["averages"]], axis=0)
+        centroids_diff[scene_id] = np.mean(component_features[:, FEATURE_GROUPS["differences"]], axis=0)
 
     os.makedirs(output_dir, exist_ok=True)
     model_stem = Path(model_file).stem.replace("gmm_pipeline_", "")

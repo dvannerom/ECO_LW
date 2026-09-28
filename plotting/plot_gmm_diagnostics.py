@@ -17,12 +17,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from scene_features import build_scene_features
-
-FEATURE_NAMES = [
-    "C08_av", "C11_av", "C12_av", "C14_av", "C15_av", "C16_av",
-    "BTD14-11", "BTD14-15", "BTD14-08", "BTD14-16",
-]
+from scene_features import build_scene_features, feature_names
 
 
 def plot_gmm_diagnostics(
@@ -65,16 +60,16 @@ def plot_gmm_diagnostics(
     plt.close(fig)
 
     loadings = selected_pca.components_.T
-    pc_to_show = min(6, loadings.shape[1])
-    feature_names = FEATURE_NAMES[: loadings.shape[0]]
+    pc_to_show = loadings.shape[1]
+    names = feature_names()[: loadings.shape[0]]
     fig, axes = plt.subplots(pc_to_show, 1, figsize=(8, 2.2 * pc_to_show), sharex=True)
     axes = np.atleast_1d(axes)
     for index in range(pc_to_show):
-        axes[index].bar(np.arange(len(feature_names)), loadings[:, index])
+        axes[index].bar(np.arange(len(names)), loadings[:, index])
         axes[index].set_title(f"PC{index + 1} loadings")
         axes[index].grid(True, alpha=0.3)
-    axes[-1].set_xticks(np.arange(len(feature_names)))
-    axes[-1].set_xticklabels(feature_names, rotation=45, ha="right")
+    axes[-1].set_xticks(np.arange(len(names)))
+    axes[-1].set_xticklabels(names, rotation=45, ha="right")
     fig.tight_layout()
     fig.savefig(output_dir / "pca_loadings_merged_2km.png", dpi=150)
     plt.close(fig)
