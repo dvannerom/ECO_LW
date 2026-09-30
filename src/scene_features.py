@@ -12,6 +12,9 @@ SPATIAL_HALF_WINDOW_9X9 = 4
 CHANNEL_LABELS = ("C08", "C11", "C12", "C14", "C15", "C16")
 # BTD labels, in build_scene_features() column order.
 DIFFERENCE_LABELS = ("BTD14-11", "BTD14-15", "BTD14-08", "BTD14-16")
+# Spatial standard-deviation labels, in build_scene_features() column order.
+LOCAL_STD_5X5_LABELS = tuple(f"{label}_std5x5" for label in CHANNEL_LABELS)
+LOCAL_STD_9X9_LABELS = tuple(f"{label}_std9x9" for label in CHANNEL_LABELS)
 
 # Column slices of the build_scene_features() feature array, single source of truth
 # for anything downstream that needs to name or split feature columns by group.
@@ -28,8 +31,8 @@ def feature_names():
     return (
         [f"{label}_av" for label in CHANNEL_LABELS]
         + list(DIFFERENCE_LABELS)
-        + [f"{label}_std5x5" for label in CHANNEL_LABELS]
-        + [f"{label}_std9x9" for label in CHANNEL_LABELS]
+        + list(LOCAL_STD_5X5_LABELS)
+        + list(LOCAL_STD_9X9_LABELS)
     )
 
 
@@ -106,7 +109,7 @@ def scene_label_mapping(means_scaled, method="c14_btd14_08"):
     return {component: scene_id for scene_id, component in enumerate(sort_idx)}
 
 
-def build_scene_features(input_file, chunk_rows=512, pixel_step=1):
+def build_scene_features(input_file, chunk_rows=512, pixel_step=1, chunk_callback=None):
     """Build valid-pixel scene features using the production feature schema.
 
     Feature layout (10 spectral + 12 spatial = 22 columns):
@@ -117,6 +120,10 @@ def build_scene_features(input_file, chunk_rows=512, pixel_step=1):
     else, so the window always covers the true native-pixel neighborhood
     regardless of ``pixel_step``. The local means are used only to build the
     validity mask and are not included in the returned features.
+
+    If ``chunk_callback`` is provided, it is called with each feature block and
+    its flattened source-pixel indices. In this streaming mode, feature blocks
+    are not accumulated and the function returns ``None``.
 
     Returns
     -------
@@ -135,14 +142,17 @@ def build_scene_features(input_file, chunk_rows=512, pixel_step=1):
     # BT_G16_interp/BT_G18_interp are ~3.8 GB each; keep them disk-backed and only
     # materialize one row-chunk (+halo) at a time instead of the full array.
     with xr.open_dataset(input_file, engine="netcdf4") as dataset:
-        lat = dataset["lat_interp_grid"].values
-        lon = dataset["lon_interp_grid"].values
+        if chunk_callback is None:
+            lat = dataset["lat_interp_grid"].values
+            lon = dataset["lon_interp_grid"].values
+        else:
+            lat = lon = None
         bt_g16 = dataset["BT_G16_interp"]
         bt_g18 = dataset["BT_G18_interp"]
-        height, width = lat.shape
-        flat_mask = np.zeros((height, width), dtype=bool)
-        valid_features = []
-        valid_positions = []
+        height, width = dataset["lat_interp_grid"].shape
+        flat_mask = np.zeros((height, width), dtype=bool) if chunk_callback is None else None
+        valid_features = [] if chunk_callback is None else None
+        valid_positions = [] if chunk_callback is None else None
 
         row_block = chunk_rows * pixel_step
         for row_start in range(0, height, row_block):
@@ -223,9 +233,14 @@ def build_scene_features(input_file, chunk_rows=512, pixel_step=1):
                 [field[block_mask] for field in feature_fields], axis=-1
             ).astype(np.float32, copy=False)
 
-            flat_mask[global_rows, global_columns] = True
-            valid_features.append(feature_block)
-            valid_positions.append(flat_indices)
+            if chunk_callback is None:
+                flat_mask[global_rows, global_columns] = True
+                valid_features.append(feature_block)
+                valid_positions.append(flat_indices)
+            else:
+                chunk_callback(feature_block, flat_indices)
+    if chunk_callback is not None:
+        return None
     if not valid_features:
         raise ValueError(f"No valid pixels found in {input_file}")
 

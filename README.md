@@ -111,7 +111,7 @@ Use the standalone plotting scripts after the computational stages have finished
 # Plot an already-generated scene classification output
 python plotting/plot_scene_id.py --input data/scene_id/scene_id_271_res2km_5comp.nc
 
-# Plot BT and BTD centroids from an existing GMM and its training files
+# Plot BT, BTD, and 5x5/9x9 spatial BT stddev centroids from an existing GMM and its training files
 PYTHONPATH=src python plotting/plot_scene_centroids.py \
 	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib \
 	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
