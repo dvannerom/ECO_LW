@@ -33,9 +33,9 @@ def plot_scene_id(
     if label_order != "stored":
         if model_file is None:
             raise ValueError("model_file is required when label_order is not 'stored'")
-        import joblib
+        from parallel_gmm import load_pipeline
 
-        pipeline = joblib.load(model_file)
+        pipeline = load_pipeline(model_file)
         gmm = pipeline.named_steps["gmm"]
         if "pca" in pipeline.named_steps:
             means_scaled = pipeline.named_steps["pca"].inverse_transform(gmm.means_)

@@ -14,8 +14,8 @@ from scipy.stats import norm
 import time
 import math
 import argparse
-import joblib
 from netcdf_io import write_dataset
+from parallel_gmm import load_pipeline
 from scene_features import build_scene_features, scene_label_mapping
 from product_paths import model_path, selected_n_components
 
@@ -43,7 +43,7 @@ if __name__ == '__main__':
 	BT_nozeros, valid_flat, mask, lat_interp_grid, lon_interp_grid = build_scene_features(input_file)
 
 	# Retrieve model
-	pipeline = joblib.load(model)
+	pipeline = load_pipeline(model)
 	scaler = pipeline.named_steps["scaler"]
 	pca = pipeline.named_steps["pca"]
 	gmm = pipeline.named_steps["gmm"]

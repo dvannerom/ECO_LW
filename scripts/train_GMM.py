@@ -4,10 +4,10 @@ import numpy as np
 import argparse
 import joblib
 from sklearn.pipeline import Pipeline
-from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from scene_features import build_scene_features
+from parallel_gmm import ParallelGaussianMixture
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
@@ -21,6 +21,8 @@ if __name__ == '__main__':
 	parser.add_argument("--points_per_file", type=int, default=2_000_000,
 		help="Max valid-pixel rows sampled per input file before fitting (caps total EM cost)")
 	parser.add_argument("--seed", type=int, default=42, help="RNG seed for per-file subsampling")
+	parser.add_argument("--gmm_jobs", type=int, default=5,
+		help="Number of concurrent GMM initializations")
 	args = parser.parse_args()
 	
 	input_file = args.input_file
@@ -66,19 +68,10 @@ if __name__ == '__main__':
 	]
 	
 	if use_pca:
-		# 1) Fit a full PCA for diagnostics
-		pca_full = PCA(svd_solver='full')
-		pca_full.fit(StandardScaler().fit_transform(BT_merged))
-		
-		# Auto-select number of PCs to reach target variance
-		cvar = np.cumsum(pca_full.explained_variance_ratio_)
-		n_pc = int(np.searchsorted(cvar, pca_var) + 1)
-		print(f"Running PCA with {n_pc} PCs")
-
 		steps.append(
 			("pca",
 				PCA(
-					n_components=n_pc,
+					n_components=pca_var,
 					svd_solver="full",
 					whiten=False)
 			)
@@ -86,17 +79,20 @@ if __name__ == '__main__':
 
 	steps.append(
 		("gmm",
-			GaussianMixture(
+			ParallelGaussianMixture(
 				n_components=n_components,
 				n_init=5,
 				covariance_type="full",
 				random_state=42,
-				reg_covar=1e-6)
+				reg_covar=1e-6,
+				n_jobs=args.gmm_jobs)
 		)
 	)
 
 	pipeline = Pipeline(steps)
 	pipeline.fit(BT_merged)
+	if use_pca:
+		print(f"Running PCA with {pipeline.named_steps['pca'].n_components_} PCs")
 
 	suffix = f"merged_{len(input_file)}files_res2km_{int(n_components)}comp"
 

@@ -55,6 +55,7 @@ rule all:
 
 
 rule train_scene_model:
+    threads: config.get("gmm_jobs", 5)
     input:
         training=TRAINING_FILES,
         selection=SELECTED_N_COMPONENTS_FILE
@@ -64,10 +65,12 @@ rule train_scene_model:
         components=SCENE_COMPONENTS,
         n_components_file=SELECTED_N_COMPONENTS_FILE,
         points_per_file=config.get("training_points_per_file", 2_000_000),
-        seed=config.get("training_seed", 42)
+        seed=config.get("training_seed", 42),
+        gmm_jobs=config.get("gmm_jobs", 5)
     shell:
-        "PYTHONPATH=src python scripts/train_GMM.py --input_file {input.training} --n_components {params.components} "
-        "--n_components_file {params.n_components_file} --points_per_file {params.points_per_file} --seed {params.seed} --use_pca"
+        "PYTHONPATH=src python -u scripts/train_GMM.py --input_file {input.training} --n_components {params.components} "
+        "--n_components_file {params.n_components_file} --points_per_file {params.points_per_file} "
+        "--seed {params.seed} --gmm_jobs {params.gmm_jobs} --use_pca"
 
 
 rule preprocess:

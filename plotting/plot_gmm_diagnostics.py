@@ -4,7 +4,6 @@ import argparse
 import sys
 from pathlib import Path
 
-import joblib
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -17,6 +16,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from parallel_gmm import load_pipeline
 from scene_features import build_scene_features, feature_names
 
 
@@ -27,7 +27,7 @@ def plot_gmm_diagnostics(
     pca_var=0.98,
 ):
     """Recompute full-PCA diagnostics and plot the saved model's selected PCs."""
-    pipeline = joblib.load(model_file)
+    pipeline = load_pipeline(model_file)
     if "pca" not in pipeline.named_steps:
         raise ValueError("The saved model does not contain a PCA step")
 

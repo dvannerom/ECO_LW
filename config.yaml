@@ -37,6 +37,7 @@ selected_n_components_file: data/models/selected_n_components.json
 # EM cost bounded regardless of how many training_files/days are merged).
 training_points_per_file: 2000000
 training_seed: 42
+gmm_jobs: 5
 
 # SBDART "Sunny" clear-sky/cloudy scene library used to fit the
 # narrowband-to-broadband regression coefficients (see scripts/compute_temperature_SBDART.py).
