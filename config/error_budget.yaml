@@ -1,0 +1,215 @@
+schema_version: 1
+source:
+  document: "ESA Report for Mission Assessment: Earth Explorer 12 Candidate Mission ECO"
+  reference: "ESA-EOPSM-ECO-RP-5024, Issue 1.0, 2026-06-12"
+  doi: "10.5281/zenodo.20543209"
+  conventions:
+    goal_threshold: "Goal is highest achievable benefit; threshold is minimum major step change."
+    confidence: "Retain the confidence level exactly as stated by each requirement; null means not specified in the cited passage."
+    allocation: "No MO2 per-source allocation is approved here. Do not infer allocations from top-level requirements."
+
+scope:
+  mission_objective: MO2
+  product: outgoing_longwave_radiation
+  units: "W m-2"
+  requirements_file: docs/mission_context.md
+  budget_status: "unallocated"
+
+requirements:
+  average_olr_accuracy:
+    rfmA_id: ObsReq_10
+    source: "RfMA §4.2.2, p.37"
+    quantity: accuracy
+    aggregation: "monthly_goal_to_seasonal_threshold_flux_maps"
+    units: percent
+    goal: 0.3
+    threshold: 1.25
+    reference_flux_w_m2: 240.0
+    reported_absolute_equivalent_w_m2:
+      goal: 0.5
+      threshold: 2.0
+    confidence_level: null
+    note: >-
+      Preserve both the percentages and the absolute equivalents as reported.
+      The RfMA describes equal quadratic contributions from RSR and OLR; confirm
+      the exact conversion and confidence convention before using derived values
+      for compliance.
+
+  average_olr_stability:
+    rfmA_id: ObsReq_11
+    source: "RfMA §4.2.2, p.37"
+    quantity: stability
+    aggregation: "monthly_to_seasonal_flux_maps"
+    units: percent
+    maximum: 0.3
+    confidence_level: null
+
+  instantaneous_olr_accuracy:
+    rfmA_id: ObsReq_15
+    source: "RfMA §4.2.2, p.39"
+    quantity: accuracy
+    aggregation: "instantaneous_flux_map"
+    spatial_resolution_km:
+      goal: 10
+      threshold: 50
+    units: percent
+    goal: 1.42
+    threshold: 5.83
+    reference_flux_w_m2: 240.0
+    reported_absolute_equivalent_w_m2:
+      goal: 2.4
+      threshold: 9.9
+    confidence_level: null
+    note: >-
+      Preserve percentages and RfMA-reported absolute equivalents. Confirm the
+      RSR/OLR equal-contribution conversion and confidence convention before
+      deriving a compliance threshold.
+
+  narrowband_to_broadband_olr_accuracy:
+    rfmA_id: ObsReq_16
+    source: "RfMA §4.2.2, p.39"
+    quantity: reconstruction_accuracy
+    aggregation: "instantaneous_olr_spectral_reconstruction"
+    units: percent
+    maximum: 0.84
+    confidence_level: null
+    note: >-
+      This is a spectral-reconstruction sub-budget, not the complete OLR error
+      requirement. Do not divide by sqrt(2) or otherwise apportion without an
+      explicit RfMA convention or approved project allocation.
+
+  regional_annual_tor_sampling:
+    rfmA_id: ObsReq_7
+    source: "RfMA §4.2.1, p.35"
+    quantity: sampling_error
+    aggregation: "annual_regional_tor"
+    region_definition: "5 degree by 5 degree areas, continental or hemispheric asymmetry"
+    units: "W m-2"
+    maximum: 4.0
+    confidence_level: null
+    note: "TOR is total outgoing radiation; this repository's OLR-only chain does not cover the full requirement."
+
+  average_olr_spatial_resolution:
+    rfmA_id: ObsReq_9
+    source: "RfMA §4.2.2, p.36"
+    quantity: spatial_resolution
+    aggregation: "monthly_goal_to_seasonal_threshold_flux_maps"
+    units: km
+    goal: 10
+    threshold: 50
+
+  tir_camera_spatial_resolution:
+    rfmA_id: MeasReq_10
+    source: "RfMA §4.3.3, p.43"
+    quantity: spatial_resolution
+    aggregation: "camera_measurement"
+    units: km
+    goal: 2
+    threshold: 10
+
+  tir_radiometric_sensitivity:
+    rfmA_id: MeasReq_8
+    source: "RfMA Table 4.1, p.43"
+    quantity: noise_equivalent_differential_temperature
+    reference_temperature_k: 255
+    units: K
+    channels:
+      water_vapour:
+        wavelength_um: [5, 8]
+        goal: 0.4
+        threshold: 0.7
+      cloud_phase:
+        wavelength_um: [8, 9.1]
+        goal: 0.4
+        threshold: 0.4
+      ozone:
+        wavelength_um: [9.1, 10.3]
+        goal: 0.4
+        threshold: 0.4
+      cloud_temperature:
+        wavelength_um: [10.3, 11.4]
+        goal: 0.4
+        threshold: 0.4
+      cloud_optical_depth:
+        wavelength_um: [11.4, 12.5]
+        goal: 0.4
+        threshold: 0.4
+      carbon_dioxide:
+        wavelength_um_goal: [12.5, 16]
+        wavelength_um_threshold: [12.5, 14]
+        goal: 0.4
+        threshold: 0.6
+    note: "Sensitivity values are NEdT at the reference temperature, not absolute radiometric accuracy."
+
+  camera_absolute_radiometric_accuracy:
+    rfmA_id: MeasReq_9
+    source: "RfMA §4.3.3, p.43"
+    quantity: absolute_radiometric_accuracy
+    aggregation: "camera_radiance_measurement"
+    units: percent
+    maximum: 10.0
+    confidence_level: 2
+    note: "The RfMA expects integral cross-calibration against the WFOV radiometer to improve higher-level products; this is not a pixel-level camera calibration."
+
+  multiangle_temporal_coincidence:
+    rfmA_id: ObsReq_12
+    source: "RfMA §4.2.2, p.38"
+    quantity: temporal_coincidence
+    aggregation: "views_used_in_one_flux_retrieval"
+    criterion: "Views sufficiently close in time to be statistically simultaneous relative to scene dynamics."
+
+  imagery_radiometer_cross_calibration:
+    rfmA_id: ObsReq_14
+    source: "RfMA §4.2.2, p.38; §6.6, p.71"
+    quantity: integral_cross_calibration
+    aggregation: "radiometer_wfov_integral"
+    criterion: "Camera-derived radiances integrated over the WFOV are compared with the Earth radiometer measurement."
+    limitation: "Not a pixel-level calibration; scene-dependent errors may remain despite disk-integral agreement."
+
+  tor_radiometer_accuracy:
+    rfmA_id: MeasReq_6
+    source: "RfMA §4.3.2, p.42"
+    quantity: absolute_uncertainty
+    aggregation: "level_1_earth_wfov_measurement"
+    units: "W m-2"
+    maximum: 1.0
+    confidence_level: 2
+    predicted_performance_w_m2: 0.37
+
+  tor_radiometer_stability:
+    rfmA_id: MeasReq_7
+    source: "RfMA §4.3.2, p.42; Table 7.7, p.90"
+    quantity: long_term_stability
+    aggregation: "nominal_mission_lifetime"
+    units: "W m-2"
+    goal: 0.05
+    threshold: 0.1
+    predicted_performance_w_m2: 0.04
+
+  multispectral_cadence:
+    rfmA_id: MeasReq_3
+    source: "RfMA §4.3.1, p.41"
+    quantity: sampling_cadence
+    aggregation: "camera_measurements"
+    units: seconds
+    maximum_interval: 30
+
+phase_0_evidence:
+  lw_narrowband_to_broadband_fit_noise:
+    source: "RfMA §6.2.2, p.62"
+    quantity: k2_fit_noise
+    units: percent
+    value: 1.5
+    channel_basis: "Nominal ECO LW channels; >2300 LW scenes; no scene stratification."
+    comparison_requirement: ObsReq_16
+    note: "Evidence/result, not itself a requirement or a per-source allocation."
+
+uncertainty_components: {}
+allocation_policy:
+  status: "not_yet_allocated"
+  note: >-
+    Register named uncertainty components with source, correlation/averaging
+    behavior, and requirement IDs as evidence becomes available. A compliance
+    report must compare like-for-like quantities at the requirement's
+    aggregation scale. Do not claim compliance by summing components with
+    unverified independence or by inventing an allocation.
