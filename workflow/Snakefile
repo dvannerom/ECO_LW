@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import yaml
 
 
 SELECTION_PATH = Path(config["selected_n_components_file"])
@@ -18,6 +19,20 @@ TRAINING_FILES = config["training_files"]
 MODEL = f"data/models/gmm_pipeline_merged_{len(TRAINING_FILES)}files_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.joblib"
 SUNNY_DIR = config["sunny_dir"]
 GOES_FILTER_DIR = config["goes_filter_dir"]
+ECO_CHANNEL_SCENARIOS_FILE = config["eco_channel_scenarios_file"]
+ECO_SPECTRAL_CV_FOLDS = config.get("eco_spectral_cv_folds", 5)
+ECO_SPECTRAL_METRICS = config["output"]["eco_spectral_metrics"]
+ECO_SPECTRAL_RESIDUALS = config["output"]["eco_spectral_residuals"]
+ECO_N2BC_MODELS = config["output"]["eco_n2bc_models"]
+ECO_N2BC_METRICS = config["output"]["eco_n2bc_metrics"]
+ECO_ADM_DIR = config["output"]["eco_adm_dir"]
+ECO_ADM_METRICS = config["output"]["eco_adm_metrics"]
+ABI_ADM_PROXY_SUMMARY = config["output"]["abi_adm_proxy_summary"]
+ECO_SPECTRAL_FIGURE_DIR = config["output"]["eco_spectral_figure_dir"]
+ECO_SPECTRAL_FIGURES = config["output"]["eco_spectral_figures"]
+with open(ECO_CHANNEL_SCENARIOS_FILE) as scenario_handle:
+    ECO_SCENARIOS = list(yaml.safe_load(scenario_handle)["scenarios"])
+ECO_ADM_OUTPUTS = [f"{ECO_ADM_DIR}/{scenario}.npz" for scenario in ECO_SCENARIOS]
 NARROWBAND_TO_BROADBAND_COEFFS_FILE = config["narrowband_to_broadband_coeffs_file"]
 CHANNEL_POWER_LAW_FILE = config["channel_power_law_file"]
 
@@ -43,9 +58,55 @@ def broadband(day):
 
 
 BROADBAND_OUTPUTS = [broadband(day) for day in DAYS]
+SCENE_ID_OUTPUTS = [scene_id(day) for day in DAYS]
+NARROWBAND_OUTPUTS = [narrowband(day, channel) for day in DAYS for channel in range(6)]
+ABI_ADM_OUTPUTS = [
+    adm(day, channel, scene)
+    for day in DAYS
+    for channel in range(6)
+    for scene in range(SCENE_COMPONENTS)
+]
+SCENE_ID_DIAGNOSTIC_DAY = int(config.get("scene_id_diagnostic_day", DAYS[-1]))
+if SCENE_ID_DIAGNOSTIC_DAY not in DAYS:
+    raise ValueError("scene_id_diagnostic_day must be included in config['days']")
+SCENE_ID_DIAGNOSTIC_FIGURE = (
+    f"figures/scene_id/scene_id_{SCENE_ID_DIAGNOSTIC_DAY}_res{RESOLUTION}km_"
+    f"{SCENE_COMPONENTS}comp.png"
+)
 
 
 rule all:
+    input:
+        ECO_SPECTRAL_METRICS,
+        ECO_SPECTRAL_RESIDUALS,
+        ABI_ADM_PROXY_SUMMARY,
+        *ECO_SPECTRAL_FIGURES,
+        *SCENE_ID_OUTPUTS,
+        *NARROWBAND_OUTPUTS
+
+
+rule abi_scene_id_development:
+    input:
+        model=MODEL,
+        scene_ids=SCENE_ID_OUTPUTS
+
+
+rule abi_proxy_adm_corrected_narrowband_inputs:
+    input:
+        narrowbands=NARROWBAND_OUTPUTS
+
+
+rule default_scene_component_selection:
+    output:
+        SELECTED_N_COMPONENTS_FILE
+    params:
+        n_components=int(config["scene_components"])
+    run:
+        with open(output[0], "w") as handle:
+            json.dump({"n_components": params.n_components, "source": "config.yaml"}, handle)
+
+
+rule all_goes_proxy:
     input:
         config["output"]["monthly"],
         MODEL,
@@ -99,10 +160,25 @@ rule classify_scene:
         "--model {input.model} --lambda_center {params.lambda_center}"
 
 
+rule plot_proxy_scene_id:
+    input:
+        scene=lambda wildcards: scene_id(SCENE_ID_DIAGNOSTIC_DAY),
+        plotter="plotting/plot_scene_id.py"
+    output:
+        SCENE_ID_DIAGNOSTIC_FIGURE
+    params:
+        lambda_center=float(config["lambda_center"])
+    shell:
+        "python {input.plotter} --input {input.scene} "
+        "--lambda-center {params.lambda_center}"
+
+
 rule fit_adm:
     input:
         data=lambda wildcards: preprocessed(wildcards.day),
-        scene=lambda wildcards: scene_id(wildcards.day)
+        scene=lambda wildcards: scene_id(wildcards.day),
+        adm_module="src/adm.py",
+        fitting_module="src/adm_fitting.py"
     output:
         adms=expand(
             "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.nc",
@@ -144,6 +220,101 @@ rule radiance_to_flux:
         "--resolution {params.resolution} --n-components {params.n_components} "
         "--lambda_center {params.lambda_center} && "
         "touch data/.workflow/radiance_to_flux_{wildcards.day}_complete"
+
+
+rule summarize_abi_adm_proxy:
+    input:
+        adms=ABI_ADM_OUTPUTS,
+        summarizer="scripts/summarize_abi_adm_proxy.py",
+        error_budget="config/error_budget.yaml"
+    output:
+        ABI_ADM_PROXY_SUMMARY
+    params:
+        days=" ".join(str(day) for day in DAYS),
+        components=SCENE_COMPONENTS,
+        resolution=RESOLUTION
+    shell:
+        "PYTHONPATH=src python {input.summarizer} --inputs {input.adms} "
+        "--days {params.days} --n-components {params.components} "
+        "--resolution {params.resolution} --error-budget {input.error_budget} "
+        "--output {output}"
+
+
+rule fit_eco_n2bc_coefficients:
+    input:
+        sunny=SUNNY_DIR,
+        scenarios=ECO_CHANNEL_SCENARIOS_FILE,
+        error_budget="config/error_budget.yaml",
+        evaluator="scripts/evaluate_eco_spectral_reconstruction.py",
+        response_module="src/eco_spectral_response.py"
+    output:
+        models=ECO_N2BC_MODELS,
+        metrics=ECO_N2BC_METRICS
+    params:
+        folds=ECO_SPECTRAL_CV_FOLDS
+    shell:
+        "PYTHONPATH=src python {input.evaluator} --stage fit-n2bc "
+        "--sunny-dir {input.sunny} --channel-scenarios {input.scenarios} "
+        "--error-budget {input.error_budget} --folds {params.folds} "
+        "--n2bc-models-output {output.models} --n2bc-metrics-output {output.metrics}"
+
+
+rule retrieve_eco_adm_flux:
+    input:
+        sunny=SUNNY_DIR,
+        scenarios=ECO_CHANNEL_SCENARIOS_FILE,
+        evaluator="scripts/evaluate_eco_spectral_reconstruction.py",
+        response_module="src/eco_spectral_response.py",
+        adm_module="src/adm.py"
+    output:
+        fluxes=ECO_ADM_OUTPUTS,
+        metrics=ECO_ADM_METRICS
+    params:
+        adm_dir=ECO_ADM_DIR
+    shell:
+        "PYTHONPATH=src python {input.evaluator} --stage retrieve-adm "
+        "--sunny-dir {input.sunny} --channel-scenarios {input.scenarios} "
+        "--adm-output-dir {params.adm_dir} --adm-metrics-output {output.metrics}"
+
+
+rule evaluate_eco_spectral_reconstruction:
+    input:
+        n2bc_models=ECO_N2BC_MODELS,
+        n2bc_metrics=ECO_N2BC_METRICS,
+        adm_fluxes=ECO_ADM_OUTPUTS,
+        adm_metrics=ECO_ADM_METRICS,
+        abi_adm_evidence=ABI_ADM_PROXY_SUMMARY,
+        scenarios=ECO_CHANNEL_SCENARIOS_FILE,
+        evaluator="scripts/evaluate_eco_spectral_reconstruction.py"
+    output:
+        metrics=ECO_SPECTRAL_METRICS,
+        residuals=ECO_SPECTRAL_RESIDUALS
+    params:
+        adm_dir=ECO_ADM_DIR
+    shell:
+        "PYTHONPATH=src python {input.evaluator} --stage combine "
+        "--n2bc-models-input {input.n2bc_models} "
+        "--n2bc-metrics-input {input.n2bc_metrics} "
+        "--adm-output-dir {params.adm_dir} --adm-metrics-input {input.adm_metrics} "
+        "--abi-adm-evidence {input.abi_adm_evidence} "
+        "--channel-scenarios {input.scenarios} "
+        "--metrics-output {output.metrics} --residuals-output {output.residuals}"
+
+
+rule plot_eco_spectral_assessment:
+    input:
+        metrics=ECO_SPECTRAL_METRICS,
+        residuals=ECO_SPECTRAL_RESIDUALS,
+        error_budget="config/error_budget.yaml",
+        plotter="plotting/plot_eco_spectral_assessment.py"
+    output:
+        figures=ECO_SPECTRAL_FIGURES
+    params:
+        output_dir=ECO_SPECTRAL_FIGURE_DIR
+    shell:
+        "python {input.plotter} --metrics {input.metrics} "
+        "--residuals {input.residuals} --error-budget {input.error_budget} "
+        "--output-dir {params.output_dir}"
 
 
 rule fit_channel_power_law:

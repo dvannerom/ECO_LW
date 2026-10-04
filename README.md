@@ -1,6 +1,39 @@
-Software to develop ECO tools using proxy data.
+Framework for demonstrating the full GOES ABI narrowband longwave
+radiance-to-broadband-flux workflow and assessing what that demonstration,
+together with ECO-specific simulations, establishes about ECO processing
+feasibility and uncertainty.
 
-The current workflow goes like this:
+The complete ABI chain is a core deliverable. ECO's expected improvement from
+per-pixel multi-view sampling and overlapping channels must be tested explicitly.
+Uncertainty estimates must identify their source, RfMA requirement, and any
+ABI-to-ECO transfer or rescaling assumptions; missing or non-transferable terms
+must remain explicit gaps, not zero uncertainty.
+
+This repository contributes evidence toward a scoped SRL4 case for ECO MO2's
+LW radiance-to-flux data flow; it is not a standalone assessment of mission-wide
+SRL. See the [SRL4 readiness assessment](docs/srl4_lw_readiness_assessment.md)
+for the handbook criteria, evidence currently available, and remaining gaps.
+Its workflow-purpose audit records the current coverage and scientific blockers,
+including an ADM flux-normalization defect now corrected in code. Existing ABI
+ADMs and downstream products, ECO ADM retrievals, and angular/end-to-end scores
+must be regenerated before interpreting them with the corrected normalization.
+
+The default Snakemake target combines two evidence branches: ECO longwave
+spectral reconstruction against ObsReq 16 using GERB/Clerbaux Sunny spectra and
+configured ECO channel scenarios, plus GOES ABI proxy processing through scene
+identification, ADM fitting, and ADM-corrected narrowband BT inputs. The full GOES ABI
+narrowband-to-broadband and monthly production chain remains the explicit
+`all_goes_proxy` target; its coefficients are not used as ECO performance
+estimates.
+
+ECO observations are not available; the assessment therefore uses ABI as
+empirical proxy evidence and SBDART/GERB simulations with ECO channel scenarios
+to estimate expected ECO performance.
+
+## GOES ABI proxy processing chain
+
+The following seven steps describe the existing GOES ABI proxy production chain,
+run with the `all_goes_proxy` target; they are not the default ECO assessment.
 
 1. Read proxy data and generate smaller files with relevant data: preprocess_data_ABI.py
 2. Train a GMM clustering algorithm on the data to assign a scene identification label to all pixels: train_GMM.py
@@ -16,104 +49,193 @@ The original scripts remain available for individual experiments. For production
 runs, use the declarative workflow in `workflow/Snakefile`:
 
 ```bash
-# Edit days, training files, resolution, and model settings first.
+# Preview the default mixed ECO/ABI assessment workflow.
 snakemake -s workflow/Snakefile --configfile config.yaml -n
 
-# Run independent daily jobs in parallel.
-snakemake -s workflow/Snakefile --configfile config.yaml --cores 8
+# Generate ECO spectral metrics/figures and ABI proxy N2BC inputs.
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 1
+
+# Run the existing GOES ABI proxy production chain.
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 8 all_goes_proxy
 ```
 
-### Run an individual step
-
-The following direct script commands match the current `config.yaml` example
-(day 245, 2 km resolution, step 1, 5 scene components, and lambda center -106).
-Run them from the repository root and adjust the arguments and paths when using
-different data. Unlike Snakemake, these commands do not run missing upstream
-steps for you, so run the steps in order and make sure their input files exist.
+The shared ADM normalization uses twice the cosine-weighted hemispheric integral
+with the degree-to-radian conversion, so corrected radiance represents flux/pi.
+Regression checks for isotropic and limb-darkened profiles can be run with:
 
 ```bash
-# Preprocess the training day (and each day to be processed).
-PYTHONPATH=src python scripts/preprocess_data_ABI.py \
-	--day 245 --step 1 --res_km 2 --lambda_center -106
-
-# Train the scene model using the preprocessed training file.
-PYTHONPATH=src python scripts/train_GMM.py \
-	--input_file data/preprocessed_files/abi_245_res2km_step1.nc \
-	--n_components 5 \
-	--n_components_file data/models/selected_n_components.json \
-	--use_pca
-
-# Classify the preprocessed day with the trained model.
-PYTHONPATH=src python scripts/scene_id_pca.py \
-	--input_file data/preprocessed_files/abi_245_res2km_step1.nc \
-	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib \
-	--lambda_center -106
-
-# Fit ADMs for all channels and scenes for the day.
-PYTHONPATH=src python scripts/fit_ADM.py \
-	--day 245 --resolution 2 --n-components 5
-
-# Convert radiances to narrowband fluxes for the day.
-PYTHONPATH=src python scripts/radiance_to_flux.py \
-	--day 245 --resolution 2 --n-components 5 --lambda_center -106
-
-# Fit the channel radiance power-law used by the broadband calibration.
-PYTHONPATH=src python scripts/fit_irradiance.py \
-	--filter-dir data/goes_channels \
-	--output data/models/channel_radiance_power_law.json
-
-# Fit the narrowband-to-broadband coefficients.
-PYTHONPATH=src python scripts/compute_temperature_SBDART.py \
-	--sunny-dir data/Sunny --filter-dir data/goes_channels \
-	--power-law-file data/models/channel_radiance_power_law.json \
-	--output data/models/narrowband_to_broadband_coeffs.json
-
-# Convert the day's narrowband fluxes to broadband flux.
-PYTHONPATH=src python scripts/narrowband_to_broadband.py \
-	--day 245 --resolution 2 --lambda_center -106 \
-	--coefficients-file data/models/narrowband_to_broadband_coeffs.json
-
-# Optional: degrade an existing preprocessed file to a coarser resolution
-# (e.g. 2 km -> 6 km with block size 3) to study the impact of resolution
-# on the rest of the workflow. This writes a new preprocessed file that can
-# be used as a drop-in input to the resolution's downstream steps above.
-PYTHONPATH=src python scripts/average_resolution.py \
-	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
-	--block-size 3
-
-# Aggregate daily broadband flux files (add one --inputs path per day).
-PYTHONPATH=src python scripts/monthly_flux.py \
-	--inputs data/broadband_flux/broadband_flux_245_res2km.nc \
-	--reference-data data/preprocessed_files/abi_245_res2km_step1.nc \
-	--output data/monthly/monthly_flux_res2km.nc \
-	--resolution 2 --lambda-center -106
+PYTHONPATH=src:scripts python -m unittest discover -s tests -p test_adm.py -v
 ```
 
-The model filename includes the number of training files and the selected
-component count. Update its path if either changes. For monthly aggregation,
-include every configured daily broadband file after `--inputs`; use the
-preprocessed file for the first configured day as `--reference-data`.
+The default workflow writes ABI scene-ID and ADM-corrected narrowband BT input
+NetCDF products for configured days, plus a traceable summary of ABI ADM
+between-day variability. Its ECO simulation branch convolves Sunny
+directional radiances with ECO SRFs, fits the repository ADM form per simulated
+scene/channel and retrieves narrowband fluxes. Independently, it fits N2BC
+coefficients using true band-integrated fluxes. It then applies those held-out
+coefficients to both true and ADM-retrieved band fluxes to report N2BC-only and
+end-to-end OLR errors. Metrics and per-spectrum out-of-fold residuals are written under
+`data/uncertainty/`, with four diagnostic figures:
+`figures/uncertainty/eco_spectral_k2_scatter.png` compares N2BC-only and
+end-to-end scores across channel scenarios against ObsReq 16, and
+`figures/uncertainty/eco_goal_residuals_by_regime.png` shows residuals for the
+RfMA goal-band scenario, and
+`figures/uncertainty/eco_adm_narrowband_flux_error.png` shows the preceding
+angular-retrieval error by channel, and
+`figures/uncertainty/abi_adm_proxy_variability.png` shows empirical ABI ADM
+shape spread across days by channel and proxy scene. This spread is not an ECO
+sigma or a curve-fit covariance; the final JSON carries its ObsReq 12/15/17
+traceability and transfer caveats separately. The simulation uses 15 noise-free Sunny
+views from 0° to 70°; this is an idealized case, not the mission's full N=1–20
+geometry and instrument-noise distribution. The plotted k=2 scatter is
+provisional and is not a formal compliance result until its metric convention
+and flight SRFs are confirmed.
+The two branches are complementary evidence, not a serial sensor substitution:
+ECO channel scenarios and coefficients are not applied to GOES ABI band values.
+The default workflow does not yet claim a combined per-pixel ECO broadband flux
+or total propagated uncertainty.
 
-Snakemake tracks preprocessing, scene classification, ADM fitting, narrowband
-conversion, broadband conversion, and monthly aggregation as separate stages.
-Completed daily products are reused automatically, and a failed stage can be
-resumed without restarting earlier stages. The legacy ADM and radiance scripts
-write several products in one invocation; the workflow records per-day
-completion markers for those batch operations.
+## Individual default workflow stages
 
-Plotting is kept as an explicit offline step after the products have been written to disk.
+The default DAG has independent ECO N2BC-fit and ADM-retrieval branches. They
+join only to score the end-to-end chain, alongside ABI proxy scene-ID,
+ADM-corrected N2BC inputs, and an ABI ADM variability summary. The two ADM
+methods remain separate evidence. Either ECO branch can run first or in parallel.
+Run an output target to execute a stage and its upstream dependencies.
+
+### 1. `fit_eco_n2bc_coefficients`
+
+Fits grouped out-of-fold N2BC models using true ECO-band fluxes integrated from
+the Sunny spectra. This is the spectral-only N2BC estimate; it does not consume
+the ADM retrieval. The fold-specific models are saved for the later end-to-end
+stage.
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 1 \
+	data/uncertainty/eco_n2bc_cv_models.joblib
+```
+
+This rule also writes `data/uncertainty/eco_n2bc_stage_metrics.json`.
+
+### 2. `retrieve_eco_adm_flux`
+
+Convolves Sunny directional radiances with each ECO channel scenario, fits the
+repository ADM shape independently per simulated scene/channel, and saves
+ADM-retrieved narrowband fluxes plus angular-retrieval diagnostics. The current
+case uses 15 noise-free views from 0° to 70°; it does not yet span ECO's full
+N=1–20 geometry or instrument-noise distribution.
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 1 \
+	data/uncertainty/eco_adm_stage_metrics.json
+```
+
+### 3. `evaluate_eco_spectral_reconstruction`
+
+Joins the two independent branches: applies each fold's N2BC model to both true
+and ADM-retrieved narrowband fluxes, then reports N2BC-only and end-to-end errors
+against ObsReq 16. The residual CSV labels the two assessment stages separately.
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 1 \
+	data/uncertainty/eco_spectral_reconstruction.json
+```
+
+### 4. `plot_eco_spectral_assessment`
+
+Reads the joined metrics and residuals and creates three diagnostic figures:
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 1 \
+	figures/uncertainty/eco_spectral_k2_scatter.png
+```
+
+This target also produces the goal-band residual and ADM narrowband-flux figures.
+
+### ABI ADM proxy variability summary
+
+Summarizes between-day spread in the existing ABI fitted ADM shape and angular
+profiles by ABI channel and proxy scene. It is empirical evidence linked to
+ObsReq 15 and 17; it does not provide curve-fit covariance or directly estimate
+ECO ADM uncertainty. ObsReq 12 is listed as not directly assessed because ABI's
+two fixed views do not reproduce ECO's multi-angle sequence.
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 1 \
+	data/uncertainty/abi_adm_proxy_summary.json
+```
+
+### ABI proxy scene-ID development
+
+The ABI branch trains the configured GMM model and classifies all configured
+days. The current selection is 7 components. Run the scene-ID stage on its own
+with:
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 8 \
+	abi_scene_id_development
+```
+
+These ABI scene labels support development of the ECO scene-ID algorithm; they
+remain proxy evidence, not ECO classifications.
+
+### ABI ADM-corrected narrowband inputs
+
+Fits the ABI-proxy ADMs and writes the corrected ABI-channel brightness
+temperatures consumed by the GOES-specific N2BC. These are proxy inputs for
+scene/ADM development, not ECO narrowband fluxes or ECO-channel measurements.
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 8 \
+	abi_proxy_adm_corrected_narrowband_inputs
+```
+
+The ECO simulation and ABI proxy branches are complementary but remain separate
+at the N2BC boundary. ECO regression coefficients are not applied to ABI
+brightness temperatures. A per-pixel ECO broadband product and total propagated
+uncertainty require compatible ECO observations and an explicit uncertainty-
+transfer model.
+
+The full-resolution diagnostic map is optional because rendering a disk-sized
+scene grid can require substantial memory. Generate the configured diagnostic-
+day map with:
+
+```bash
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 1 \
+	figures/scene_id/scene_id_271_res2km_7comp.png
+```
+
+## GOES ABI proxy target
+
+The additional GOES ABI narrowband-to-broadband conversion and monthly products
+are retained under `all_goes_proxy`. Run that target for the complete GOES ABI
+proxy production chain:
+
+```bash
+# Preview the proxy workflow.
+snakemake -s workflow/Snakefile --configfile config.yaml -n all_goes_proxy
+
+# Run the proxy workflow.
+snakemake -s workflow/Snakefile --configfile config.yaml --cores 8 all_goes_proxy
+```
+
+This target tracks preprocessing, scene classification, ADM fitting, narrowband
+conversion, broadband conversion, and monthly aggregation. Its GOES-derived
+coefficients are proxy products, not ECO performance estimates. The plotting
+section below contains optional GOES proxy diagnostics.
 
 ## Offline plotting
 
-Use the standalone plotting scripts after the computational stages have finished:
+Use these standalone scripts for GOES proxy diagnostics after the proxy products
+have been generated:
 
 ```bash
 # Plot an already-generated scene classification output
-python plotting/plot_scene_id.py --input data/scene_id/scene_id_271_res2km_5comp.nc
+python plotting/plot_scene_id.py --input data/scene_id/scene_id_271_res2km_7comp.nc
 
 # Plot BT, BTD, and 5x5/9x9 spatial BT stddev centroids from an existing GMM and its training files
 PYTHONPATH=src python plotting/plot_scene_centroids.py \
-	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib \
+	--model data/models/gmm_pipeline_merged_20files_res2km_7comp.joblib \
 	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
 	--label-order c14_btd14_08
 
@@ -121,13 +243,13 @@ PYTHONPATH=src python plotting/plot_scene_centroids.py \
 PYTHONPATH=src python plotting/plot_gmm_diagnostics.py \
 	--input-file data/preprocessed_files/abi_245_res2km_step1.nc \
 	data/preprocessed_files/abi_271_res2km_step1.nc \
-	--model data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib
+	--model data/models/gmm_pipeline_merged_20files_res2km_7comp.joblib
 
 # Plot an ADM fit for a specific day/channel/scene set
-python plotting/plot_fit_ADM.py --day 271 --resolution 2 --n-components 5 --channel 0 --scene 0
+python plotting/plot_fit_ADM.py --day 271 --resolution 2 --n-components 7 --channel 0 --scene 0
 
 # Compare the fitted ADM curves of all scenes for one day/channel
-PYTHONPATH=src python plotting/plot_ADMs.py --day 271 --resolution 2 --channel 0 --n-components 5
+PYTHONPATH=src python plotting/plot_ADMs.py --day 271 --resolution 2 --channel 0 --n-components 7
 
 # Compare G16-G18 radiance differences before and after ADM correction
 python plotting/plot_radiance_difference.py --day 271 --resolution 2 --channel 0
@@ -257,12 +379,13 @@ for example:
 
 ```bash
 snakemake -s workflow/Snakefile --configfile config.yaml \
-	--executor slurm --jobs 20 --latency-wait 60
+	--executor slurm --jobs 20 --latency-wait 60 all_goes_proxy
 ```
 
-The GMM and ADM parameters are calibration products. Train and inspect those
-products before running the production days, then set `model` in `config.yaml`
-to the approved model artifact. Monthly aggregation uses streaming sums and
+Within the GOES proxy chain, the GMM and ADM parameters are calibration
+products. The Snakefile derives the model artifact path from the training-file
+count, resolution, and selected component count; explicit plotting commands
+should use that same artifact. Monthly aggregation uses streaming sums and
 Welford statistics, so it does not stack all daily scenes in memory.
 
 Production intermediates use structured NetCDF4 files with named variables,

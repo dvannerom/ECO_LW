@@ -9,11 +9,25 @@ source:
     allocation: "No MO2 per-source allocation is approved here. Do not infer allocations from top-level requirements."
 
 scope:
+  evaluation_target: ECO
   mission_objective: MO2
   product: outgoing_longwave_radiation
   units: "W m-2"
   requirements_file: docs/mission_context.md
   budget_status: "unallocated"
+  evidence_sources:
+    eco_mission_definition:
+      role: "Target requirements, channel scenarios, instrument performance, and geometry."
+    abi_goes16_goes18:
+      role: "Empirical proxy for scene, spatial, temporal, and transferable algorithm behavior."
+      transferability: "Term-specific; record geometry/channel mismatches and do not treat ABI performance as ECO performance."
+    gerb_clerbaux_sbdart:
+      role: "Spectral simulation evidence; convolve spectra with ECO response functions for ECO retrieval estimates."
+      local_path: data/Sunny
+    ceres:
+      role: "Independent broadband/ADM validation where product, footprint, and sampling support the comparison."
+  channel_scenarios:
+    selection_policy: "Evaluate each configured ECO channel scenario; GOES channels remain proxy inputs and are not mutually exclusive with ECO scenarios."
 
 requirements:
   average_olr_accuracy:
@@ -205,6 +219,31 @@ phase_0_evidence:
     note: "Evidence/result, not itself a requirement or a per-source allocation."
 
 uncertainty_components: {}
+evidence_mappings:
+  abi_adm_proxy_variability:
+    source: "GOES-16/GOES-18 ABI ADM products produced by fit_ADM.py"
+    statistic: "Between-day spread of fitted shape parameter and normalized angular profile, stratified by ABI channel and proxy scene"
+    uncertainty_role: "Empirical proxy evidence for real-scene, geographic, and temporal ADM variability; not curve_fit covariance and not an ECO sigma without transfer validation."
+    rfmA_requirements:
+      ObsReq_15: "Informs the angular-conversion portion of instantaneous OLR accuracy by proxy comparison only."
+      ObsReq_17: "Informs scene-conditioned ADM behavior; does not estimate ECO classification or co-registration error."
+      ObsReq_12: "Does not directly demonstrate ECO's dense quasi-simultaneous multi-angle sampling."
+    transfer_limits:
+      - "ABI and ECO channel responses differ."
+      - "ABI has two fixed geographic views; ECO uses N=1..20 quasi-simultaneous views."
+      - "Proxy scene classes are not proven equivalent to ECO scene classes."
+    combination_policy: "Keep separate from Sunny/ECO estimates until channel, scene, geometry, and covariance transfer are established."
+
+  sunny_eco_adm_retrieval:
+    source: "GERB/Clerbaux Sunny directional radiance spectra convolved with ECO channel scenarios"
+    statistic: "Per-scene/channel ADM fit residual and ADM-retrieved band-flux error"
+    uncertainty_role: "ECO-specific simulated angular-retrieval evidence under configured geometry; supports end-to-end ObsReq_15 evaluation."
+    rfmA_requirements:
+      ObsReq_12: "Geometry scenario is explicitly stated; current 15-view test does not represent the full N=1..20 distribution."
+      ObsReq_15: "Contributes simulated angular-retrieval error to instantaneous OLR accuracy."
+      ObsReq_17: "Does not estimate scene misclassification or image co-registration error."
+    combination_policy: "Combine with N2BC only by applying N2BC models to ADM-retrieved fluxes in held-out scenes; retain the N2BC-only and end-to-end scores separately."
+
 allocation_policy:
   status: "not_yet_allocated"
   note: >-

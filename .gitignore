@@ -20,6 +20,18 @@ __pycache__/
 data/.workflow/
 data/models/selected_n_components*.json
 figures/*.csv
+data/uncertainty/eco_spectral_reconstruction.json
+data/uncertainty/eco_spectral_residuals.csv
+data/uncertainty/eco_n2bc_cv_models.joblib
+data/uncertainty/eco_n2bc_stage_metrics.json
+data/uncertainty/eco_adm_stage_metrics.json
+data/uncertainty/eco_adm_retrieval/
+data/uncertainty/abi_adm_proxy_summary.json
 
 # SBDART "Sunny" scene library (large, externally generated, not versioned)
 data/Sunny/
+
+# Reference documents (e.g. ECO Report for Mission Assessment) and their
+# extracted text: large, externally sourced, not versioned
+docs/*.pdf
+docs/*.pdf.txt

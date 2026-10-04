@@ -30,8 +30,9 @@ days:
 resolution_km: 2
 preprocess_step: 1
 lambda_center: -106
-scene_components: 5
+scene_components: 7
 selected_n_components_file: data/models/selected_n_components.json
+scene_id_diagnostic_day: 271
 
 # Per-file valid-pixel subsampling cap for train_GMM.py (keeps GaussianMixture's
 # EM cost bounded regardless of how many training_files/days are merged).
@@ -39,10 +40,12 @@ training_points_per_file: 2000000
 training_seed: 42
 gmm_jobs: 5
 
-# SBDART "Sunny" clear-sky/cloudy scene library used to fit the
-# narrowband-to-broadband regression coefficients (see scripts/compute_temperature_SBDART.py).
+# GERB/Clerbaux Sunny spectra support the ECO channel-scenario assessment and
+# the separate GOES ABI coefficient fit used only by the proxy production chain.
 sunny_dir: data/Sunny
 goes_filter_dir: data/goes_channels
+eco_channel_scenarios_file: config/eco_channel_scenarios.yaml
+eco_spectral_cv_folds: 5
 channel_power_law_file: data/models/channel_radiance_power_law.json
 narrowband_to_broadband_coeffs_file: data/models/narrowband_to_broadband_coeffs.json
 
@@ -69,7 +72,20 @@ training_files:
   - data/preprocessed_files/abi_273_res2km_step1.nc
   - data/preprocessed_files/abi_274_res2km_step1.nc
 
-model: data/models/gmm_pipeline_merged_1files_res2km_5comp.joblib
+model: data/models/gmm_pipeline_merged_20files_res2km_7comp.joblib
 output:
   root: data
   monthly: data/monthly/monthly_flux_res2km.nc
+  eco_spectral_metrics: data/uncertainty/eco_spectral_reconstruction.json
+  eco_spectral_residuals: data/uncertainty/eco_spectral_residuals.csv
+  eco_n2bc_models: data/uncertainty/eco_n2bc_cv_models.joblib
+  eco_n2bc_metrics: data/uncertainty/eco_n2bc_stage_metrics.json
+  eco_adm_dir: data/uncertainty/eco_adm_retrieval
+  eco_adm_metrics: data/uncertainty/eco_adm_stage_metrics.json
+  abi_adm_proxy_summary: data/uncertainty/abi_adm_proxy_summary.json
+  eco_spectral_figure_dir: figures/uncertainty
+  eco_spectral_figures:
+    - figures/uncertainty/eco_spectral_k2_scatter.png
+    - figures/uncertainty/eco_goal_residuals_by_regime.png
+    - figures/uncertainty/eco_adm_narrowband_flux_error.png
+    - figures/uncertainty/abi_adm_proxy_variability.png
