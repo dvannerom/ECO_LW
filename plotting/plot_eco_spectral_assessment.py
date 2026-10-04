@@ -23,7 +23,6 @@ SCENARIO_LABELS = {
     "rfma_threshold_6": "RfMA threshold (6 bands)",
     "supplied_sloped_6_14": "Sloped 6-14 um (6 bands)",
     "supplied_tails_6_14": "Tails 6-14 um (6 bands)",
-    "supplied_extended_4p5_18": "Extended 4.5-18 um (6 bands)",
 }
 
 
