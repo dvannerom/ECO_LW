@@ -1,0 +1,34 @@
+schema_version: 1
+output_dir: data/uncertainty_runs/first_draft
+figure_dir: figures/uncertainty/sensitivity
+training_days: [245, 247]
+evaluation_days: [246, 252]
+seed: 42
+realizations: 5
+abi:
+  tiles_per_day: 12
+  tile_size: 100
+  halo: 20
+  max_candidate_tiles: 600
+  minimum_valid_fraction: 0.8
+  training_points: 20000
+  components: [6, 7]
+  baseline_components: 7
+  block_size: 5
+  second_choice_fraction: 0.10
+  maximum_vza_deg: 70
+  gmm_initializations: 2
+sunny:
+  scenario: rfma_goal_6
+  folds: 5
+  degree: 2
+  training_mode: clear_cloud_stratified
+  noise_requirement: goal
+  robust_huber_cutoff: 1.5
+  robust_max_iterations: 200
+  robust_tolerance: 0.00001
+scope: >-
+  First-draft temporal holdout on sampled, complete equal-area ABI footprints,
+  with production spectral and texture features. Full Sunny library and
+  configured idealized angular geometry. Not a global climatological sample
+  or complete mission uncertainty budget.
