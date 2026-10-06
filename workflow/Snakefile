@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 import yaml
+import sys
+sys.path.insert(0, str(Path("src").resolve()))
+from figure_layout import figure_path
 
 
 SELECTION_PATH = Path(config["selected_n_components_file"])
@@ -28,13 +31,52 @@ ECO_N2BC_METRICS = config["output"]["eco_n2bc_metrics"]
 ECO_ADM_DIR = config["output"]["eco_adm_dir"]
 ECO_ADM_METRICS = config["output"]["eco_adm_metrics"]
 ABI_ADM_PROXY_SUMMARY = config["output"]["abi_adm_proxy_summary"]
-ECO_SPECTRAL_FIGURE_DIR = config["output"]["eco_spectral_figure_dir"]
-ECO_SPECTRAL_FIGURES = config["output"]["eco_spectral_figures"]
+UNCERTAINTY_REGISTRY = config["output"]["uncertainty_registry"]
+UNCERTAINTY_GAP_REPORT = config["output"]["uncertainty_gap_report"]
+SENS_SETTINGS = config.get("sensitivity_settings", "config/sensitivity_run.yaml")
+with open(SENS_SETTINGS) as sensitivity_handle:
+    SENS = yaml.safe_load(sensitivity_handle)
+SENS_DIR = SENS["output_dir"]
+SENS_REPORT = f"{SENS_DIR}/sensitivity_report.json"
+USE_SENSITIVITY = config.get("uncertainty_sensitivity", Path(SENS_REPORT).exists())
+ECO_SPECTRAL_FIGURE_DIR = str(figure_path(config["output"]["eco_spectral_figures"][0]).parent)
+ECO_SPECTRAL_FIGURES = [str(figure_path(path)) for path in config["output"]["eco_spectral_figures"]]
+UNCERTAINTY_FIGURES = [
+    str(figure_path(f"figures/uncertainty/eco_uncertainty_{name}.png"))
+    for name in (
+        "evidence_map", "residual_summary", "variance_decomposition",
+        "numerical_budget", "scenario_budgets", "channel_diagnostics",
+    )
+]
 with open(ECO_CHANNEL_SCENARIOS_FILE) as scenario_handle:
     ECO_SCENARIOS = list(yaml.safe_load(scenario_handle)["scenarios"])
 ECO_ADM_OUTPUTS = [f"{ECO_ADM_DIR}/{scenario}.npz" for scenario in ECO_SCENARIOS]
 NARROWBAND_TO_BROADBAND_COEFFS_FILE = config["narrowband_to_broadband_coeffs_file"]
 CHANNEL_POWER_LAW_FILE = config["channel_power_law_file"]
+ABI_SUNNY_COMPARISON = config.get("abi_sunny_comparison", {})
+ABI_SUNNY_COMPARISON_DIR = ABI_SUNNY_COMPARISON.get(
+    "output_dir", "data/abi_sunny_comparison"
+)
+ABI_SUNNY_COMPARISON_OUTPUTS = [
+    f"{ABI_SUNNY_COMPARISON_DIR}/{name}"
+    for name in (
+        "spectral_gmm.joblib", "abi_sample_scenes.csv", "sunny_scenes.csv",
+        "sunny_abi_radiances.npz", "summary.json",
+    )
+]
+ABI_SUNNY_POPULATION_DIR = ABI_SUNNY_COMPARISON.get(
+    "figure_dir", "figures/abi_sunny_comparison"
+)
+ABI_SUNNY_POPULATION_DIR = str(figure_path(ABI_SUNNY_POPULATION_DIR))
+SENS["figure_dir"] = str(figure_path(SENS["figure_dir"]))
+ABI_SUNNY_POPULATION_OUTPUTS = [
+    f"{ABI_SUNNY_POPULATION_DIR}/{name}"
+    for name in (
+        "sunny_scene_population.png", "sunny_scene_population_all_views.png",
+        "sunny_scene_consistency.png",
+        "sunny_file_scene_consistency.csv", "sunny_scene_population.json",
+    )
+]
 
 
 def preprocessed(day):
@@ -70,7 +112,7 @@ SCENE_ID_DIAGNOSTIC_DAY = int(config.get("scene_id_diagnostic_day", DAYS[-1]))
 if SCENE_ID_DIAGNOSTIC_DAY not in DAYS:
     raise ValueError("scene_id_diagnostic_day must be included in config['days']")
 SCENE_ID_DIAGNOSTIC_FIGURE = (
-    f"figures/scene_id/scene_id_{SCENE_ID_DIAGNOSTIC_DAY}_res{RESOLUTION}km_"
+    f"figures/diagnostics/scene_id/scene_id_{SCENE_ID_DIAGNOSTIC_DAY}_res{RESOLUTION}km_"
     f"{SCENE_COMPONENTS}comp.png"
 )
 
@@ -80,6 +122,9 @@ rule all:
         ECO_SPECTRAL_METRICS,
         ECO_SPECTRAL_RESIDUALS,
         ABI_ADM_PROXY_SUMMARY,
+        UNCERTAINTY_REGISTRY,
+        UNCERTAINTY_GAP_REPORT,
+        *UNCERTAINTY_FIGURES,
         *ECO_SPECTRAL_FIGURES,
         *SCENE_ID_OUTPUTS,
         *NARROWBAND_OUTPUTS
@@ -89,6 +134,60 @@ rule abi_scene_id_development:
     input:
         model=MODEL,
         scene_ids=SCENE_ID_OUTPUTS
+
+
+rule abi_sunny_spectral_comparison:
+    input:
+        *ABI_SUNNY_COMPARISON_OUTPUTS,
+        *ABI_SUNNY_POPULATION_OUTPUTS
+
+
+rule sunny_scene_population:
+    input:
+        classifications=f"{ABI_SUNNY_COMPARISON_DIR}/sunny_scenes.csv",
+        summary=f"{ABI_SUNNY_COMPARISON_DIR}/summary.json",
+        plotter="plotting/plot_sunny_scene_population.py"
+    output:
+        ABI_SUNNY_POPULATION_OUTPUTS
+    params:
+        output_dir=ABI_SUNNY_POPULATION_DIR
+    shell:
+        "python {input.plotter:q} --input {input.classifications:q} "
+        "--summary {input.summary:q} --output-dir {params.output_dir:q}"
+
+
+rule compare_abi_sunny_scenes:
+    threads: ABI_SUNNY_COMPARISON.get("gmm_jobs", 1)
+    input:
+        training=TRAINING_FILES,
+        sunny=sorted(str(path) for path in Path(SUNNY_DIR).glob("radiance_lw_*/sunny_lw_*")),
+        filters=[f"{GOES_FILTER_DIR}/goes-r_abi_{channel}" for channel in
+                 ("ch08", "ch11", "ch12", "ch14", "ch15", "ch16")],
+        code=[
+            "scripts/compare_abi_sunny_scenes.py", "src/abi_sunny_comparison.py",
+            "src/scene_features.py", "src/spectral_response.py",
+            "src/radiometry.py", "src/parallel_gmm.py",
+        ]
+    output:
+        ABI_SUNNY_COMPARISON_OUTPUTS
+    params:
+        output_dir=ABI_SUNNY_COMPARISON_DIR,
+        sunny_dir=SUNNY_DIR,
+        filter_dir=GOES_FILTER_DIR,
+        components=ABI_SUNNY_COMPARISON.get("components", 7),
+        points_per_file=ABI_SUNNY_COMPARISON.get("points_per_file", 50000),
+        pixel_step=ABI_SUNNY_COMPARISON.get("pixel_step", 10),
+        chunk_rows=ABI_SUNNY_COMPARISON.get("chunk_rows", 64),
+        seed=ABI_SUNNY_COMPARISON.get("seed", 42),
+        roundtrip_limit=ABI_SUNNY_COMPARISON.get("max_roundtrip_error_K", 0.1)
+    shell:
+        "PYTHONPATH=src python scripts/compare_abi_sunny_scenes.py "
+        "--abi-files {input.training:q} --sunny-dir {params.sunny_dir:q} "
+        "--filter-dir {params.filter_dir:q} --output-dir {params.output_dir:q} "
+        "--components {params.components} --points-per-file {params.points_per_file} "
+        "--pixel-step {params.pixel_step} --chunk-rows {params.chunk_rows} "
+        "--seed {params.seed} --gmm-jobs {threads} "
+        "--max-roundtrip-error-K {params.roundtrip_limit}"
 
 
 rule abi_proxy_adm_corrected_narrowband_inputs:
@@ -222,10 +321,82 @@ rule radiance_to_flux:
         "touch data/.workflow/radiance_to_flux_{wildcards.day}_complete"
 
 
+rule build_uncertainty_registry:
+    input:
+        metrics=ECO_SPECTRAL_METRICS,
+        residuals=ECO_SPECTRAL_RESIDUALS,
+        n2bc_metrics=ECO_N2BC_METRICS,
+        adm_metrics=ECO_ADM_METRICS,
+        abi_summary=ABI_ADM_PROXY_SUMMARY,
+        scenarios=ECO_CHANNEL_SCENARIOS_FILE,
+        error_budget="config/error_budget.yaml",
+        registry_builder="scripts/build_uncertainty_registry.py",
+        uncertainty_module="src/uncertainty.py",
+        layout="src/figure_layout.py"
+    output:
+        registry=UNCERTAINTY_REGISTRY,
+        report=UNCERTAINTY_GAP_REPORT
+    params:
+        figures=UNCERTAINTY_FIGURES[:3],
+        numerical_figures=UNCERTAINTY_FIGURES[3:]
+    shell:
+        "PYTHONPATH=src python {input.registry_builder} "
+        "--metrics {input.metrics} --residuals {input.residuals} "
+        "--n2bc-metrics {input.n2bc_metrics} --adm-metrics {input.adm_metrics} "
+        "--abi-summary {input.abi_summary} --scenarios {input.scenarios} "
+        "--error-budget {input.error_budget} "
+        "--registry-output {output.registry} --report-output {output.report} "
+        "--figure-paths {params.figures} "
+        "--numerical-figure-paths {params.numerical_figures}"
+
+
+rule uncertainty_assessment:
+    input:
+        UNCERTAINTY_REGISTRY,
+        UNCERTAINTY_GAP_REPORT,
+        *UNCERTAINTY_FIGURES
+
+
+rule plot_uncertainty_registry:
+    input:
+        registry=UNCERTAINTY_REGISTRY,
+        plotter="plotting/plot_uncertainty_registry.py",
+        experiments="config/uncertainty_experiments.yaml",
+        sensitivity=[SENS_REPORT] if USE_SENSITIVITY else [],
+        uncertainty_module="src/uncertainty.py",
+        layout="src/figure_layout.py"
+    output:
+        evidence_map=UNCERTAINTY_FIGURES[0],
+        residual_summary=UNCERTAINTY_FIGURES[1],
+        variance_decomposition=UNCERTAINTY_FIGURES[2],
+        numerical_budget=UNCERTAINTY_FIGURES[3],
+        scenario_budgets=UNCERTAINTY_FIGURES[4],
+        channel_diagnostics=UNCERTAINTY_FIGURES[5],
+        budget_csv="docs/Uncertainty budget and propagation for ECO_LW - Sheet1.csv"
+    params:
+        scenario=config.get("uncertainty_panel", {}).get("scenario", "rfma_goal_6"),
+        mode=config.get("uncertainty_panel", {}).get("training_mode", "clear_cloud_stratified"),
+        degree=config.get("uncertainty_panel", {}).get("degree", 2),
+        sensitivity=f"--sensitivity-report {SENS_REPORT}" if USE_SENSITIVITY else ""
+    shell:
+        "python {input.plotter} --registry {input.registry} "
+        "--experiment-spec {input.experiments:q} --budget-csv {output.budget_csv:q} "
+        "{params.sensitivity} "
+        "--evidence-map {output.evidence_map} "
+        "--residual-summary {output.residual_summary} "
+        "--variance-decomposition {output.variance_decomposition} "
+        "--numerical-budget {output.numerical_budget} "
+        "--scenario-budgets {output.scenario_budgets} "
+        "--channel-diagnostics {output.channel_diagnostics} "
+        "--budget-scenario {params.scenario} --training-mode {params.mode} "
+        "--degree {params.degree}"
+
+
 rule summarize_abi_adm_proxy:
     input:
         adms=ABI_ADM_OUTPUTS,
         summarizer="scripts/summarize_abi_adm_proxy.py",
+        uncertainty_module="src/uncertainty.py",
         error_budget="config/error_budget.yaml"
     output:
         ABI_ADM_PROXY_SUMMARY
@@ -246,7 +417,8 @@ rule fit_eco_n2bc_coefficients:
         scenarios=ECO_CHANNEL_SCENARIOS_FILE,
         error_budget="config/error_budget.yaml",
         evaluator="scripts/evaluate_eco_spectral_reconstruction.py",
-        response_module="src/eco_spectral_response.py"
+        response_module="src/eco_spectral_response.py",
+        uncertainty_module="src/uncertainty.py"
     output:
         models=ECO_N2BC_MODELS,
         metrics=ECO_N2BC_METRICS
@@ -265,7 +437,8 @@ rule retrieve_eco_adm_flux:
         scenarios=ECO_CHANNEL_SCENARIOS_FILE,
         evaluator="scripts/evaluate_eco_spectral_reconstruction.py",
         response_module="src/eco_spectral_response.py",
-        adm_module="src/adm.py"
+        adm_module="src/adm.py",
+        uncertainty_module="src/uncertainty.py"
     output:
         fluxes=ECO_ADM_OUTPUTS,
         metrics=ECO_ADM_METRICS
@@ -285,7 +458,8 @@ rule evaluate_eco_spectral_reconstruction:
         adm_metrics=ECO_ADM_METRICS,
         abi_adm_evidence=ABI_ADM_PROXY_SUMMARY,
         scenarios=ECO_CHANNEL_SCENARIOS_FILE,
-        evaluator="scripts/evaluate_eco_spectral_reconstruction.py"
+        evaluator="scripts/evaluate_eco_spectral_reconstruction.py",
+        uncertainty_module="src/uncertainty.py"
     output:
         metrics=ECO_SPECTRAL_METRICS,
         residuals=ECO_SPECTRAL_RESIDUALS
@@ -377,3 +551,9 @@ rule monthly_flux:
         "PYTHONPATH=src python scripts/monthly_flux.py --inputs {input.broadband} "
         "--reference-data {input.reference} --output {output} "
         "--resolution {params.resolution} --lambda-center {params.lambda_center}"
+
+
+include: "uncertainty_sensitivity.smk"
+include: "uncertainty_convergence.smk"
+include: "uncertainty_extensions.smk"
+include: "nominal_budget.smk"

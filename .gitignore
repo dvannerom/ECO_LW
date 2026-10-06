@@ -28,6 +28,27 @@ data/uncertainty/eco_adm_stage_metrics.json
 data/uncertainty/eco_adm_retrieval/
 data/uncertainty/abi_adm_proxy_summary.json
 
+# Generated experiments stay local; retain selected small nominal evidence.
+data/abi_sunny_comparison*/
+data/uncertainty_runs/
+data/uncertainty/*
+!data/uncertainty/nominal/
+data/uncertainty/nominal/*
+!data/uncertainty/nominal/budget_report.json
+!data/uncertainty/nominal/numerical_budget.csv
+!data/uncertainty/nominal/spatial_report.json
+!data/uncertainty/nominal/abi_assignment.json
+data/diagnostics/*
+!data/diagnostics/nominal/
+data/diagnostics/nominal/*
+!data/diagnostics/nominal/gmm_selection.json
+!data/diagnostics/nominal/scene_support.json
+!data/diagnostics/nominal/gmm_component_diagnostics.csv
+!data/diagnostics/nominal/gmm_component_diagnostics.csv.json
+figures/diagnostics/**/*.json
+figures/diagnostics/**/*.csv
+!figures/diagnostics/gmm/production/gmm_component_diagnostics.csv
+
 # SBDART "Sunny" scene library (large, externally generated, not versioned)
 data/Sunny/
 

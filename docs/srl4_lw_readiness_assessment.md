@@ -33,7 +33,31 @@ every local input and generated output.
   ECO*, ESA-EOPSM-ECO-RP-5024, Issue 1.0, 12 June 2026. Mission-level SRL4
   self-assessment: Appendix A, pp.122-125.
 
-## Workflow purpose audit (2026-10-04)
+## Current evidence update (2026-10-06)
+
+The dated audit below describes the earlier production and noise-free
+spectral/angular branches. Subsequent opt-in workflows now execute radiometric
+noise, ABI spatial processing, assignment stress, training/evaluation
+convergence, and sparse/noisy ECO geometry experiments. The scene-conditioned
+nominal budget additionally uses a spectral-only ABI classifier, grouped
+held-out Sunny scene ADMs/N2BC, and exact-boundary 4-100 um truth.
+
+The current nominal result is a conditional combined RMSE of 1.9930 W/m2,
+with signed bias +0.6423 W/m2, scene-dependent SD 1.8484 W/m2, and random
+SD 0.3780 W/m2. Noise-mediated assignment is included under an assumed
+ABI-to-ECO response transfer; the ABI spatial-processing increment is combined
+under an independence hypothesis. This does not close calibration, flight-SRF,
+registration, temporal evolution, independent validation, model-training/library
+discrepancy, or mission sampling/stability terms. It is not a complete mission
+budget or a compliance assessment.
+
+The [README](../README.md#scene-conditioned-nominal-uncertainty-budget) documents
+the current configuration, assumptions, results and explicit target. Small
+nominal reports and diagnostics are versioned as evidence snapshots; bulk inputs,
+caches, residual arrays and application models remain external/local. The
+nominal budget is separate from the default registry and its historical panel.
+
+## Historical workflow purpose audit (2026-10-04)
 
 The project scientist clarified three required deliverables: a complete ABI
 narrowband LW radiance-to-broadband-flux demonstration; scoped SRL4 feasibility
@@ -56,7 +80,7 @@ channels is a hypothesis to test, not a conclusion from ABI agreement.
 | Instrument noise/calibration and WFOV anchoring | Mission requirements are recorded. | No propagated ECO measurement covariance or anchoring residual in the chain. MeasReq 8/9, ObsReq 14/15. |
 | Monthly/seasonal products and stability | ABI aggregation averages the configured daily samples and saves difference variability. | Not a full diurnal monthly mean or an ECO sampling/stability uncertainty. ObsReq 8/9/10/11. |
 | Independent absolute validation | CERES is identified as an evidence source. | No CERES comparison in the inspected DAG. East-West agreement cannot detect shared error or establish absolute accuracy. ObsReq 10/15. |
-| Combined uncertainty and gaps | Requirement catalog and generic propagation helpers exist. | `uncertainty_components` is empty; no workflow output combines a populated budget or systematically reports every missing term. Missing is not zero. |
+| Combined uncertainty and gaps | The default workflow now emits `data/uncertainty/eco_uncertainty_registry.json` and `data/uncertainty/eco_uncertainty_gaps.md`. Matched Sunny residuals preserve signed spectral-only and angular-plus-interaction terms and their observed covariance. | Quantification remains conditional on Sunny/SRF/geometry assumptions; existing evidence without producer provenance is labelled unverified. Missing radiometric, scene, ADM-population, calibration, validation, and aggregation terms remain explicit and are not combined into a total. |
 
 ### Scientific blockers found
 
@@ -93,24 +117,53 @@ channels is a hypothesis to test, not a conclusion from ABI agreement.
    4-100 um. Document or quantify that mapping; retain both conventions rather
    than silently changing the reference. Report bias separately from 2-sigma
    scatter; the latter excludes bias and is not automatically accuracy.
-4. **Saved results are not established as current-config evidence.**
-   The inspected joined JSON contains nine scenarios but the current catalog
-   defines four. Preserve configuration snapshots and input/code identities,
-   then regenerate affected stages before presenting those scores as current
-   evidence. This audit did not rerun large products or change algorithms.
+4. **Saved results are stale and lack producer provenance.**
+   The inspected joined, N2BC, and ADM metric files contain nine scenarios
+   while the current catalog defines four. They also do not carry producer
+   code/input/configuration identities. The registry reports scenario mismatch
+   separately from provenance status, hashes each source artifact, and marks
+   out-of-catalog terms stale and remaining legacy terms unverified. Workflow
+   reruns embed producer identities; do not interpret existing scores as
+   regenerated merely because some scenario names match. This assessment did
+   not rerun large products.
 
 ### Completion priorities
 
 Physical flux normalization is now corrected in code. Verify radiometric
-closure, and regenerate a reproducible ABI broadband demonstration and ECO
-simulation before interpreting the affected products.
-Next extract transferable within-scene ADM variability with noise/geometry
-conditioning, and test ECO view-count, noise, and SRF scenarios on matched
-physical scenes. Finally register each uncertainty term with source artifact,
-statistic/units, bias or covariance, domain, transfer method, averaging behavior,
-requirement and evidence status. Produce an explicit gap report even when a
-term cannot yet be estimated; do not invent values or combine unvalidated
-proxy and simulation terms in quadrature.
+closure, then regenerate a reproducible ABI broadband demonstration and ECO
+simulation before interpreting products affected by the ADM correction. Next,
+test ECO view-count, noise, SRF and within-scene ADM-population cases on matched
+physical scenes. Extend paired covariance to calibrated radiance, scene
+classification, co-registration, anchoring and aggregation only when supporting
+data exist. Do not invent values, transfer ABI spread universally, or combine
+unvalidated proxy and simulation terms in quadrature.
+
+### Uncertainty registry vertical slice (2026-10-04)
+
+The `all` target depends on the registry and gap report. It captures hashes for
+small code/configuration files, bounded-cost path/size/mtime inventories for
+large input trees, exact hashes for generated metric artifacts, scenario-catalog
+comparisons, and producer-provenance status. Input inventory fingerprints do not
+read or hash the contents of large simulation trees; this limitation is recorded
+in each producer provenance record.
+
+The Sunny residual join pairs spectral-only and end-to-end out-of-fold errors by
+scenario, regression, shared scene index and fold. For each full-scene and
+clear/cloud subset it computes the angular-plus-interaction increment as the
+paired end-to-end residual minus the spectral-only residual, then propagates
+their measured 2-by-2 sample covariance. This does not assume independence and
+does not separate pure ADM error from its interaction with N2BC. The spectral
+term maps to ObsReq 16 and end-to-end to ObsReq 15. The current 15-view,
+noise-free simulation and idealized SRFs remain conditional evidence; no
+monthly/seasonal propagation or requirement-compliance conclusion is made.
+
+ABI ADM evidence remains a separate proxy statistic: between-day spread of
+scene-average fitted parameters. It is not within-scene pixel spread, an ECO
+prior, or an ECO flux uncertainty. The report also retains missing noise and
+calibration covariance, scene-ID/CTH/parallax/co-registration error, ADM
+population/model form, temporal coincidence, WFOV anchoring, spectral-domain
+and SRF uncertainty, independent validation, aggregation covariance/sampling,
+and stability as unquantified terms. A missing term is never encoded as zero.
 
 ## Criterion mapping
 
@@ -119,9 +172,9 @@ proxy and simulation terms in quadrature.
 | Trace science goals through mission and system requirements. | [Mission context](mission_context.md) links MO2 to RfMA requirements; [error budget](../config/error_budget.yaml) records ObsReq 9-16 and explicitly avoids invented allocations. | Partial for this LW processing slice. The repo tracks relevant product and retrieval requirements, but does not reproduce the mission's complete objective-to-system traceability. |
 | Provide a model that computes measurement data from geophysical inputs. | [Workflow](../workflow/Snakefile) and [evaluation implementation](../scripts/evaluate_eco_spectral_reconstruction.py) convolve GERB/Clerbaux spectra with ECO channel scenarios, retrieve narrowband flux with an ADM, and evaluate narrow-to-broadband reconstruction. | Model and runnable stages exist. Idealized passbands and a prescribed 15-view case are not a complete ECO instrument/mission simulator. |
 | Establish technical/scientific adequacy and independent review. | The workflow records intermediate metrics and residuals; the [README](../README.md) documents stages and limitations. | Independent scientific review of this repository's implementation is not recorded. The RfMA's statements about review of mission-level models do not automatically review this code. |
-| Demonstrate measurement sensitivity to the target parameter. | The current simulation scores 4,620 GERB/Clerbaux clear/cloud spectra, grouped by shared index, under ECO channel scenarios. It reports spectral-only and ADM-plus-spectral errors. | Relevant numerical evidence, but angular retrieval currently uses all 15 available 5-degree views from 0-70 degrees without instrument noise. It does not represent the mission's full N=1..20 geometry/noise distribution. The k=2 comparison convention is provisional. |
+| Demonstrate measurement sensitivity to the target parameter. | The simulation scores 4,620 GERB/Clerbaux clear/cloud spectra, grouped by shared index. Nominal and follow-up workflows now propagate NEdT and compare sparse/wide/clustered geometries as well as spectral/angular residuals. | Conditional numerical evidence; the nominal case uses 15 views and follow-up geometries are idealized, not the mission's N=1..20 orbit/noise distribution. The older k=2 comparison convention remains provisional. |
 | Analyze information content and identify contributing geophysical parameters. | Channel scenarios and clear/cloud regime scores expose some spectral sensitivity; [scenario definitions](../config/eco_channel_scenarios.yaml) state the modeled bands and assumptions. | A formal information-content/observability analysis and parameter covariance treatment are not documented for this code path. |
-| Perform a scientific risk analysis. | [Mission context](mission_context.md) records known algorithm and transferability limitations; the [error budget](../config/error_budget.yaml) declares allocations unassigned and currently has no registered uncertainty components. | Useful risk notes exist, but there is no maintained risk register with likelihood/impact, mitigation, evidence, and disposition. |
+| Perform a scientific risk analysis. | [Mission context](mission_context.md) records algorithm and transferability limitations; the [error budget](../config/error_budget.yaml) declares allocations unassigned and registers conditional spectral/angular and ABI-proxy components with explicit gaps. | Useful risk notes exist, but there is no maintained risk register with likelihood/impact, mitigation, evidence, and disposition. |
 | Produce demonstration measurement data. | The workflow produces simulated ECO ADM fluxes, stage metrics, cross-validated residuals, and figures under `data/uncertainty/` and `figures/uncertainty/`. | Demonstration outputs exist locally and are reproducible from the configured inputs. They are not ECO observations, and local outputs/input availability should be preserved for an externally reviewable evidence package. |
 | Discuss complementary and alternative missions. | The mission context documents GOES ABI as term-specific proxy evidence, CERES as potential independent validation, and configured ECO channel alternatives. | The rationale and alternatives are documented; a concise comparison tied specifically to this LW evidence package would improve the SRL4 technical report. |
 

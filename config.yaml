@@ -46,6 +46,18 @@ sunny_dir: data/Sunny
 goes_filter_dir: data/goes_channels
 eco_channel_scenarios_file: config/eco_channel_scenarios.yaml
 eco_spectral_cv_folds: 5
+# Separate ABI-trained spectral classifier for direct per-view Sunny comparison.
+# This component count is independent of the production texture-GMM selection.
+abi_sunny_comparison:
+  output_dir: data/abi_sunny_comparison
+  figure_dir: figures/abi_sunny_comparison
+  components: 7
+  points_per_file: 50000
+  pixel_step: 10
+  chunk_rows: 64
+  seed: 42
+  gmm_jobs: 1
+  max_roundtrip_error_K: 0.1
 channel_power_law_file: data/models/channel_radiance_power_law.json
 narrowband_to_broadband_coeffs_file: data/models/narrowband_to_broadband_coeffs.json
 
@@ -83,6 +95,8 @@ output:
   eco_adm_dir: data/uncertainty/eco_adm_retrieval
   eco_adm_metrics: data/uncertainty/eco_adm_stage_metrics.json
   abi_adm_proxy_summary: data/uncertainty/abi_adm_proxy_summary.json
+  uncertainty_registry: data/uncertainty/eco_uncertainty_registry.json
+  uncertainty_gap_report: data/uncertainty/eco_uncertainty_gaps.md
   eco_spectral_figure_dir: figures/uncertainty
   eco_spectral_figures:
     - figures/uncertainty/eco_spectral_k2_scatter.png

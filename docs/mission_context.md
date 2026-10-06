@@ -358,6 +358,29 @@ RfMA states it.
 
 ## 7. Scene identification
 
+- [user 2026-10-05] Assess angular scene consistency within each Sunny file:
+  identify its most frequent assigned scene across the supplied VZAs and
+  report the percentage of views assigned to that scene. For count ties,
+  select the tied scene with highest mean posterior across all views and
+  flag the tie. Plot file population by this main scene, counting each file
+  once. The user proposes label changes across VZA as a scene-ID bias diagnostic.
+- [derived 2026-10-05] This statistic measures angular label consistency, not
+  established physical classification bias: a fixed simulated atmospheric
+  column has angle-dependent spectra, and unsupervised spectral GMM components
+  need not coincide with invariant physical scene labels.
+- [user 2026-10-05] The ABI/Sunny comparison uses a separate spectral-only
+  classifier: train the GMM on ABI data only, using GOES-16/18 averaged BT
+  inputs, then apply the same fitted preprocessing and GMM to Sunny spectra.
+  Each provided Sunny directional view is used directly as the equivalent
+  averaged-view input. Do not emulate GOES-16/18 viewing-angle pairs or
+  synthesize spatial-texture features for Sunny.
+- [derived 2026-10-05] The direct-view convention supports a common spectral
+  scene taxonomy, not physical equivalence between a Sunny view and the
+  arithmetic mean of two ABI BT views. Report Sunny occupancy by angle and
+  regime; do not interpret classification probabilities as accuracy or library
+  frequencies as climatology. The comparison classifier has its own scene
+  IDs and must not select production texture-GMM ADMs without a separate
+  justified mapping/retraining.
 - [RfMA §6.2.4 p.63] LW ADM scene ID is expected to use **ECO LW channels 2, 4
   and 5** (Cloud Phase 8–9.1, Cloud Temperature 10.3–11.4, Cloud Optical Depth
   11.4–12.5) — BTs and BTDs.
@@ -552,6 +575,258 @@ Resolved by the user on 2026-09-30:
 
 ## 13. Standing conclusions (uncertainty framework)
 
+Current-status note (2026-10-06): the development entries below preserve earlier
+experiments as history, including superseded automatic component selection and
+Sunny-derived assignment probabilities. The current nominal configuration uses
+manually specified six components, ABI-pixel-derived assignment transitions
+included under assumed ECO response transfer, and the independent spatial proxy.
+Its combined RMSE is 1.9930 W/m2; the paired Sunny subtotal is 1.9560 W/m2.
+See the [current README summary](../README.md#current-uncertainty-status-2026-10-06).
+Earlier excluded-assignment and 1.931 W/m2 results are not the current budget.
+
+- [user 2026-10-06] Expand nominal four-panel GMM diagnostics to every
+  component count 2 through 15 inclusive. Spatial diagnostics must contain
+  every 2 km point from 2 through 20 km; nominal choices remain six
+  components and 10 km.
+- [assumed 2026-10-06] Expanded spatial averaging blocks are anchored to
+  the full ABI grid origin, not restarted at tile boundaries. Incomplete
+  tile-edge blocks are excluded at each resolution. Footprint populations
+  can therefore differ by resolution within the same sampled tile locations.
+- [derived 2026-10-06] Expanded run completed all GMM counts 2-15 and
+  spatial resolutions 2-20 km in 2 km steps. Spatial RMSEs in that order:
+  0.0000, 0.2715, 0.2970, 0.3202, 0.3477, 0.3706, 0.3882,
+  0.4097, 0.4314, 0.4452 W/m2. At 10 km the footprint count remains
+  306,644 and the combined nominal budget remains 1.9930 W/m2 RMSE.
+  Evaluation is conditional on 192 eligible non-overlapping cached tiles
+  per day, not the full overlapping region.
+- [derived 2026-10-06] Implemented ABI spatial processing proxy on 306,644
+  complete matched 10 km footprints across held-out days 246/252/259/271.
+  Reused average_resolution block averaging on cached 2 km tile locations;
+  fitted spectral-GMM-conditioned ABI ADMs only on training days and used
+  existing ABI cubic broadband conversion in both processing routes.
+  Coarse-minus-mean-fine bias +0.0200 W/m2, scene SD 0.3471 W/m2,
+  deterministic random SD 0, RMSE 0.3477 W/m2. No extra spatial-noise
+  perturbation or ECO optical PSF is simulated. Mean satellite flux is
+  compared; ABI two-view geometry and broadband spectral reference differ
+  from the Sunny/ECO branch. Identity block-size-one comparison closes.
+  Under user-assumed spatial independence, combined bias +0.6423,
+  scene SD 1.8484, random SD 0.3780 and RMSE 1.9930 W/m2.
+- [derived 2026-10-06] Restored original four-panel component diagnostic
+  tools on the spectral-only cached population. All tested counts receive
+  exact production ADM/cubic-flux scoring; bootstrap reliability uses the
+  existing three-refit procedure, not only initialization variability.
+  Six-component bootstrap minimum ARI is 0.9703. No tested count passes
+  every default diagnostic criterion; the manual nominal six remains
+  unchanged. Seed variability is provided as a supplementary figure.
+- [user 2026-10-06] Reuse the existing four-panel GMM component diagnostics
+  (likelihood/ICL, reliability, ADM quality, angular coverage/production
+  impact) for the spectral-only budget classifier. Seed variability may
+  supplement these diagnostics, not replace them.
+- [user 2026-10-06] Include the ABI coarse-radiance-first minus
+  mean-fine-retrieval broadband processing difference in the numerical
+  budget, and combine it with other sources assuming independence.
+  Independence and ABI-to-ECO transfer are work hypotheses, not measured
+  cross-source covariance or absolute spatial-error truth.
+- [user 2026-10-06] Keep six components as the default for the nominal
+  spectral-only GMM; the final component count will be selected manually
+  by inspection of GMM diagnostic figures, not by automatic likelihood
+  selection. This decision concerns the nominal budget classifier, not
+  automatically the separate historical texture-feature ABI classifier.
+- [user 2026-10-06] Treat observed ABI radiance as truth for the incremental
+  noise experiment, despite its existing instrument noise. Add extra NEdT
+  noise to ABI radiances and compare baseline/noisy scene assignments on
+  ABI pixels; Sunny must not determine the assignment-change probability.
+  Include the propagated scene-assignment contribution in the budget under
+  the explicit assumption that ECO responds similarly. The user selected
+  fixed-model noisy inference, not noisy GMM retraining.
+- [derived 2026-10-06] Revised execution samples 50,000 held-out native ABI
+  overlap pixels and 30 added-noise realizations. Baseline inputs are
+  uncorrected radiances matching the cached BT features, with separate
+  G16/G18 Planck coefficients. Independent channel/satellite radiance noise
+  corresponds to 0.4 K at 255 K per satellite, before mean-BT features.
+  ABI-population-weighted assignment-change probability is 9.03%.
+  Scene-conditional transitions are transferred to Sunny file labels,
+  independently of simulated ECO-channel noise; this assumed transfer is
+  not a measured physical cross-channel/sensor noise covariance.
+  Included assignment increment: bias -0.0216, scene SD 0.1034,
+  random SD 0.2957, RMSE 0.3140 W/m2. Revised conditional subtotal:
+  bias +0.6223, scene SD 1.8155, random SD 0.3780, RMSE 1.9560 W/m2.
+  These results supersede the earlier Sunny-noise-based 25.9% assignment
+  experiment and fixed-label 1.931 W/m2 subtotal for the current budget.
+- [user 2026-10-06] Accept the currently limited Sunny scene
+  representativeness provisionally; retain the coverage caveat but do not
+  block the budget work on expanding the library.
+- [user 2026-10-06] Implement the agreed scene-conditioned ABI/Sunny nominal
+  uncertainty budget, with explicit bias, scene-dependent SD and random SD.
+- [derived 2026-10-06] First nominal implementation uses separately selected
+  spectral-only GMMs on bounded cached ABI overlap tiles, 50,000 training
+  and 50,000 held-out-day rows. Component selection uses the smallest
+  adequately occupied candidate within one held-out-day likelihood SE of
+  the best tested fit; this is a conservative four-day heuristic, not a
+  demonstrated universal optimum. ABI held-out complete-pixel populations
+  weight Sunny scenes, conditional on coverage. Sunny file labels use a
+  majority of 15 view labels with mean-posterior tie-breaking. ABI SRFs
+  define taxonomy; ECO goal SRFs define physical band retrieval.
+- [derived 2026-10-06] Nominal scene ADMs share original modified-log shape
+  parameters per scene/channel with separate file amplitudes and equal
+  relative-residual weights per file. Five shared-index Sunny folds keep
+  evaluation files out of ADM/N2BC fitting. Weighted N2BC is trained on true
+  band flux against exact-boundary integrated 4-100 um truth; full-library
+  application models are saved separately from assessment fold models.
+  Thirty noise realizations separate persistent bias, across-file mean-error
+  spread and within-file random variance, correcting scene variance for
+  finite Monte Carlo means. Covariance is retained on paired residuals.
+- [assumed 2026-10-06] Noise-induced assignment changes use 0.4 K NEdT at
+  255 K translated through ABI SRFs for the classifier, independently of
+  ECO goal-channel noise. This is an ABI-equivalent taxonomy proxy, not an
+  established ECO classifier noise transfer; its mediated flux increment
+  is explicitly excluded from the conditional ECO subtotal.
+- [derived 2026-10-06] Executed nominal grouped budget: selected six
+  spectral-only components, seed 73, with initialization adjusted-Rand
+  agreement >0.99. Sunny covers all six scene masses but weighted effective
+  sample size is about 343; one 33.3%-mass scene has only 42 spectra.
+  Weighted low-ABI-density view fraction is 13.5%, indicating transfer
+  limitations despite nominal scene coverage. Conditional spectral/angular/
+  fixed-label-noise RMSEs are 1.008/1.347/0.237 W/m2. Paired joint subtotal:
+  bias +0.644, scene SD 1.805, random SD 0.237, ensemble RMSE 1.931 W/m2.
+  Within-scene pooled-versus-per-file broadband spread is 1.156 W/m2 SD.
+  ABI-equivalent noise changes file labels with weighted probability 25.9%;
+  its mediated-flux RMSE is 0.537 W/m2, excluded from the ECO subtotal.
+  Calibration, spatial mixing, model-training/library uncertainty and
+  monthly sampling remain unquantified; no complete mission total claimed.
+- [user 2026-10-06] Budget table must explicitly show the RfMA error
+  classes; interpret as bias, scene-dependent and random (§7.4.1 p.90),
+  distinct from physical contributor rows. Within-scene spread is to inform
+  the SD entry after propagation into broadband-flux residuals, not merely
+  coefficient spread. The radiometer-specific one-day averaging assumption
+  must not automatically be transferred to LW camera/retrieval errors.
+- [user 2026-10-06] Proposed nominal retrieval: train/validate a
+  spectral-only ABI GMM with held-out days and component-count selection;
+  apply the common feature representation to Sunny and assign each file
+  a scene. Fit original-form ADMs per Sunny file using 15 views, and pooled
+  scene ADMs from Sunny files in each assigned scene; use per-file versus
+  pooled differences to assess within-scene angular spread. Use ABI scene
+  populations to weight Sunny N2BC fitting. Estimate noise-induced
+  scene-assignment changes, not an arbitrary switching fraction. This is
+  approved for methodological review only; pooling, spectral transfer,
+  weighting and validation details require agreement before implementation.
+- [user 2026-10-06] Budget reference: instantaneous broadband OLR on a
+  10 km product footprint; monthly estimates only if justified; RfMA goal
+  channels; 15 equally spaced Sunny views; original repository modified-log
+  ADM; RfMA broadband spectral domain (4-100 um). Retrieval estimator remains
+  to be confirmed. Seek a justified nominal assignment-error scenario rather
+  than treating an imposed switching fraction as measured misclassification.
+  Separate diagnostic outputs from uncertainty calculations and distinguish
+  nominal configurations, error sources and affected processing models.
+- [RfMA MeasReq 10/11 pp.43-44; ObsReq 9 p.36; §7.4.2 p.91,
+  checked 2026-10-06] Native multispectral radiance resolution: 2 km goal,
+  10 km threshold for SWIR/TIR, applying from nadir through the central
+  imaging field. Flux-product resolution: 10 km goal, 50 km threshold.
+  Camera design assessment uses the 10 km threshold across the central
+  field and reports degradation toward its edge. The text does not specify
+  a native 10 km nadir goal; actual nadir performance requires reading the
+  design curves in Fig.7.15. User interpretation of 10 km native nadir
+  resolution is not adopted as a confirmed mission fact.
+- [user 2026-10-06] Refocus on a well-motivated numerical broadband-flux
+  uncertainty budget, distinguishing the four implemented diagnostic studies
+  from uncertainty estimates. Do not include CERES at this stage.
+- [user 2026-10-06] Add ECO geometry and assignment-response diagnostics
+  before extending ABI evaluation to full views. Geometry option 2:
+  direct identifiable multi-view amplitude/shape fits with equal weights,
+  sparse/wide versus clustered angles and requirement-level Gaussian noise;
+  no single-view scene prior and no angular-weighting experiment. Assignment
+  stress fractions: 0/1/5/10/20/30/40/50 percent.
+- [assumed 2026-10-06] Geometry diagnostic angle sets are idealized Sunny
+  grid subsets with VZA <=70 degrees, not orbit-derived sampling. The
+  55-degree angle remains mathematical normalization only; an observed
+  55-degree radiance is not required. Regularized fits need >=2 distinct
+  views, quadratic fits >=3; the minima provide no residual redundancy.
+- [derived 2026-10-06] Executed option-2 geometry diagnostic on 4,620 Sunny
+  spectra with fixed grouped held-out ECO N2BC models and five goal-noise
+  realizations. Quadratic three-view 45/50/60-degree geometry: 0.987 W/m2
+  noise-free versus 7.538 W/m2 mean noisy broadband truth RMSE; 0/35/70-degree
+  geometry: 0.962 versus 1.242 W/m2. This identifies noise amplification
+  in clustered minimal-view fits, not an orbit-derived ECO allocation.
+  New direct amplitude/shape fitting does not use the historical observed
+  55-degree normalization; its dense result is a different estimator.
+- [derived 2026-10-06] Nested ABI second-choice stress on the fixed
+  306,644-footprint population: mean RMSE over three seeds at
+  0/1/5/10/20/30/40/50 percent is
+  0.000/0.062/0.167/0.280/0.497/0.711/0.924/1.137 W/m2.
+  Zero stress closes exactly; fractions are imposed stress levels, not
+  estimated misclassification probabilities.
+- [user 2026-10-05] Implement and execute the follow-up ABI regime diagnostics
+  and convergence study. Approved ladder: 12/48/192 eligible tiles per day;
+  training days 245/247/254/261; evaluation days 246/252/259/271; seeds
+  42/73/109; two concurrent jobs and no full-disk copies. Keep the first-draft
+  outputs intact, fix evaluation cases for training variations and separate
+  sampling from GMM initialization.
+- [derived 2026-10-05] The follow-up separately varies evaluation tile pools,
+  training tile coverage, GMM training-point count and initialization. Scene
+  IDs stay local to each fitted model. Day/tile hierarchical bootstrap
+  intervals preserve paired satellites but describe only four selected
+  held-out days and eligibility-screened tiles; they are exploratory, not
+  climatological or absolute ECO-accuracy confidence intervals.
+- [derived 2026-10-05] Completed follow-up largest fixed-baseline ABI pool:
+  306,644 matched 10 km footprints on four held-out days, two paired
+  satellites. Spatial-order/ADM-form/6-vs-7-component/assignment-stress RMSE:
+  3.028/1.248/0.857/0.280 W/m2. Spatial training-coverage sensitivity remains
+  unsettled; stable source scores do not establish baseline retrieval
+  stability. No fixed-baseline scene/channel ADM touched the positivity
+  boundary. Low C14 footprint heterogeneity dominates spatial squared
+  residual in this population; separate coarse texture/classification
+  changes from nonlinear averaging before treating this as physical ECO
+  spatial-resolution uncertainty. Preserve the original first-draft table.
+- [user 2026-10-05] Implement and execute the first-draft sensitivity DAG;
+  populate the main numerical-budget figure with run-derived results.
+  Approved execution scope: bounded complete ABI footprints on two training
+  and two held-out days, full Sunny library, and five noise/assignment
+  realizations rather than the full ABI inventory.
+- [derived 2026-10-05] First-draft assessment uses training days 245/247 and
+  evaluation days 246/252, 12 eligible non-overlapping 100x100 native tiles
+  per day, production texture features and fixed training scene ADMs.
+  These are temporal-holdout proxy sensitivities, not global climatology.
+  Sunny noise excludes ECO scene-selection effects; library representativity
+  and physical realism remain unquantified. The joint Sunny scenario combines
+  noise, the quadratic ADM and robust N2BC against simulated truth, not by
+  adding ABI source sensitivities.
+- [derived 2026-10-05] Execution exposed unphysical negative limb
+  extrapolation in unconstrained Sunny and sampled ABI ADM fits. The
+  assessment enforces positive 0-90 degree profiles on a 0.1-degree grid
+  and records constrained/boundary scene-channel counts. This deliberately
+  changes the assessment baseline relative to earlier unconstrained scores;
+  production fitting is unchanged. Keep the distinction in figure captions
+  and do not attribute implementation validity failures to instrument error.
+- [user 2026-10-05] Design a Snakemake sensitivity workflow to fill the
+  unified uncertainty table by rerunning radiance-to-broadband processing for
+  each contributor. For the first version, quantify scene-ID sensitivity
+  through the existing ABI chain and label it as proxy evidence; retain the
+  ECO scene-transfer gap explicitly rather than developing an ECO-compatible
+  classifier and scene-conditioned Sunny retrieval at this stage.
+- [user 2026-10-05] Unify the proposed CSV and main numerical-budget figure
+  into one ECO assessment with source/experiment and final broadband-flux
+  impact columns, not separate all/clear/cloud columns. Specify experiments
+  for RfMA NEdT-driven Gaussian radiance noise; ABI 2 km versus 10 km
+  processing; GMM component-count sensitivity and second-choice assignment
+  on an assumed 10% of pixels; ADM functional-form sensitivity; and Sunny
+  representativity, realism and outlier sensitivity. First unify the figure
+  and experiment specification; do not run these new experiments yet.
+- [derived 2026-10-05] The unified specification is maintained in
+  `config/uncertainty_experiments.yaml`; the CSV is exported from the same
+  rows as the figure. Use fixed models and pooled held-out regimes for
+  supporting Sunny scores, not row-wise minimum clear/cloud errors.
+  The 2 km ABI reference is finer-resolution evidence, not absolute truth;
+  spatial comparison must put both outputs on matched 10 km footprints.
+  New sensitivity impacts remain pending and are not identified with the
+  existing angular/spectral residuals or included in a full ECO total.
+- [user 2026-10-05] Proposed uncertainty experiments are recorded in
+  `Uncertainty budget and propagation for ECO_LW - Sheet1.csv`: use ABI
+  held-out scene classification and second-choice assignments as a scene-ID
+  sensitivity experiment; GOES-16/18 narrowband-flux differences as an
+  empirical spread diagnostic; and matched Sunny ABI/ECO angular retrieval
+  errors to investigate transfer to ECO. The objective is source-separated
+  ECO broadband-flux uncertainty using both datasets. This is a proposal for
+  review, not an adopted transfer law or a validated uncertainty budget.
 - Split every term into random / systematic / bias; only the random part averages
   down. The RfMA uses the same three-way split for the radiometers (bias,
   scene-dependent, random), with scene-dependent errors assumed to average over
