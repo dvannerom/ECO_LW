@@ -23,7 +23,7 @@ from scene_features import build_scene_features, feature_names
 def plot_gmm_diagnostics(
     input_files,
     model_file,
-    output_dir=ROOT / "figures" / "scene_id",
+    output_dir=ROOT / "figures" / "diagnostics" / "scene_id",
     pca_var=0.98,
 ):
     """Recompute full-PCA diagnostics and plot the saved model's selected PCs."""
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-file", nargs="+", required=True, help="Training preprocessed NetCDF files")
     parser.add_argument("--model", type=Path, required=True, help="Saved GMM pipeline")
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "figures" / "scene_id")
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "figures" / "diagnostics" / "scene_id")
     parser.add_argument("--pca-var", type=float, default=0.98)
     args = parser.parse_args()
     plot_gmm_diagnostics(args.input_file, args.model, args.output_dir, args.pca_var)

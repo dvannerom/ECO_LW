@@ -23,7 +23,7 @@ from spectral_response import CHANNELS, load_goes_filters
 def plot_irradiance_fit(
     model_file=ROOT / "data" / "models" / "channel_radiance_power_law.json",
     filter_dir=ROOT / "data" / "goes_channels",
-    output_dir=ROOT / "figures" / "broadband_flux",
+    output_dir=ROOT / "figures" / "diagnostics" / "n2bc",
     t_min=200.0,
     t_max=320.0,
     t_step=1.0,
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT / "figures" / "broadband_flux",
+        default=ROOT / "figures" / "diagnostics" / "n2bc",
         help="Directory for diagnostic plots",
     )
     parser.add_argument("--t-min", type=float, default=200.0)

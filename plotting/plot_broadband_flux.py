@@ -16,7 +16,7 @@ import xarray as xr
 
 def plot_broadband_flux(
     data_file,
-    output_dir="figures/broadband_flux",
+    output_dir="figures/products/broadband_flux",
     lambda_center=-106,
 ):
     """Plot G16, G18, and G16-G18 broadband flux from a saved product."""
@@ -73,18 +73,19 @@ def plot_broadband_flux(
     return out_path
 
 
-if __name__ == "__main__":
+def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Plot saved G16 and G18 broadband flux products."
     )
-    parser.add_argument("-d", "--day", type=int, required=True, help="Day index")
-    parser.add_argument("-r", "--resolution", type=int, default=2, help="Grid resolution in km")
-    parser.add_argument("--input", type=str, help="Broadband flux NetCDF input file")
-    parser.add_argument("--output-dir", type=str, default="figures/broadband_flux")
-    parser.add_argument("--lambda-center", type=float, default=-106)
-    args = parser.parse_args()
-
-    data_file = args.input or (
-        f"data/broadband_flux/broadband_flux_{args.day}_res{args.resolution}km.nc"
+    parser.add_argument(
+        "--input", type=str, required=True, help="Broadband flux NetCDF input file"
     )
-    plot_broadband_flux(data_file, args.output_dir, args.lambda_center)
+    parser.add_argument("--output-dir", type=str, default="figures/products/broadband_flux")
+    parser.add_argument("--lambda-center", type=float, default=-106)
+    args = parser.parse_args(argv)
+
+    plot_broadband_flux(args.input, args.output_dir, args.lambda_center)
+
+
+if __name__ == "__main__":
+    main()

@@ -239,7 +239,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, help="Saved GMM pipeline")
     parser.add_argument("--input-file", nargs="+", required=True, help="Training preprocessed files")
-    parser.add_argument("--output-dir", default="figures/scene_id", help="Directory for PNG output")
+    parser.add_argument("--output-dir", default="figures/diagnostics/scene_id", help="Directory for PNG output")
     parser.add_argument("--chunk-rows", type=int, default=128, help="Rows processed per feature chunk")
     parser.add_argument(
         "--label-order",

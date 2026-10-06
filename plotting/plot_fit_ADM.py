@@ -22,7 +22,7 @@ from netcdf_io import load_data
 from product_paths import scene_id_path
 
 
-def plot_fit_adm(data_file, scene_file, channel, scene, output_dir="figures/ADM"):
+def plot_fit_adm(data_file, scene_file, channel, scene, output_dir="figures/diagnostics/adm"):
     preprocessed_data = load_data(data_file)
     rad_G16 = preprocessed_data['rad_G16_interp_corr'][:, :, [0, 3, 4, 6, 7, 8]]
     rad_G18 = preprocessed_data['rad_G18_interp_corr'][:, :, [0, 3, 4, 6, 7, 8]]
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     parser.add_argument('--n-components', type=int, required=True, help='Number of scene components')
     parser.add_argument('-c', '--channel', type=int, required=True, help='Channel index (0-5)')
     parser.add_argument('-s', '--scene', type=int, required=True, help='Scene class index')
-    parser.add_argument('--output-dir', type=str, default='figures/ADM', help='Directory for output plots')
+    parser.add_argument('--output-dir', type=str, default='figures/diagnostics/adm', help='Directory for output plots')
     args = parser.parse_args()
 
     data_file = f'data/preprocessed_files/abi_{args.day}_res{args.resolution}km_step1.nc'

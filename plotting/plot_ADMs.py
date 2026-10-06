@@ -17,7 +17,7 @@ from adm import radiance_linear
 from netcdf_io import load_data
 
 
-def plot_adm_scenes(day, resolution, channel, n_components, output_dir="figures/ADM"):
+def plot_adm_scenes(day, resolution, channel, n_components, output_dir="figures/diagnostics/adm"):
 	viewing_angle = np.linspace(0, 89, 100)
 
 	fig = plt.figure(figsize=(10, 6))
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 	parser.add_argument("-r", "--resolution", type=int, default=2)
 	parser.add_argument("-c", "--channel", type=int, required=True, help="ADM channel index (0-5)")
 	parser.add_argument("--n-components", type=int, required=True, help="Number of scene components")
-	parser.add_argument("--output-dir", type=str, default="figures/ADM")
+	parser.add_argument("--output-dir", type=str, default="figures/diagnostics/adm")
 	args = parser.parse_args()
 
 	out_path = plot_adm_scenes(args.day, args.resolution, args.channel, args.n_components, args.output_dir)

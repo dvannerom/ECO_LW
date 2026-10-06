@@ -19,7 +19,7 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="sample argument parser")
 	parser.add_argument("-f","--input_file", type=str)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
-	parser.add_argument("--output-dir", type=str, default="figures/parallax")
+	parser.add_argument("--output-dir", type=str, default="figures/diagnostics/parallax")
 	args = parser.parse_args()
 	
 	input_file = args.input_file

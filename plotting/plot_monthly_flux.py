@@ -15,7 +15,7 @@ import xarray as xr
 
 def plot_monthly_flux(
     data_file,
-    output_dir="figures/monthly_flux",
+    output_dir="figures/products/monthly_flux",
     lambda_center=-106,
 ):
     """Plot monthly G16, G18, and standard deviation of their difference."""
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="figures/monthly_flux",
+        default="figures/products/monthly_flux",
         help="Directory for the PNG output",
     )
     parser.add_argument(

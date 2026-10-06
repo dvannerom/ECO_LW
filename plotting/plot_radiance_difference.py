@@ -20,7 +20,7 @@ ABI_CHANNELS = (0, 3, 4, 6, 7, 8)
 def plot_radiance_difference(
     data_file,
     channel,
-    output_dir="figures/radiance_difference",
+    output_dir="figures/diagnostics/radiance_difference",
     lambda_center=-106,
 ):
     """Plot G16-G18 radiance differences before and after ADM correction."""
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--resolution", type=int, default=2, help="Grid resolution in km")
     parser.add_argument("-c", "--channel", type=int, required=True, help="Logical channel index (0-5)")
     parser.add_argument("--input", type=str, help="Preprocessed NetCDF input file")
-    parser.add_argument("--output-dir", type=str, default="figures/radiance_difference")
+    parser.add_argument("--output-dir", type=str, default="figures/diagnostics/radiance_difference")
     parser.add_argument("--lambda-center", type=float, default=-106)
     args = parser.parse_args()
 

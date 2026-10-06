@@ -19,7 +19,7 @@ from scene_features import scene_label_mapping
 
 def plot_scene_id(
     scene_file,
-    output_dir="figures/scene_id",
+    output_dir="figures/diagnostics/scene_id",
     lambda_center=-106,
     model_file=None,
     label_order="stored",
@@ -92,7 +92,7 @@ def plot_scene_id(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot a scene-ID NetCDF output offline.")
     parser.add_argument("--input", type=str, required=True, help="Scene ID NetCDF file")
-    parser.add_argument("--output-dir", type=str, default="figures/scene_id", help="Directory for PNG output")
+    parser.add_argument("--output-dir", type=str, default="figures/diagnostics/scene_id", help="Directory for PNG output")
     parser.add_argument("--lambda-center", type=float, default=-106, help="Central longitude for the map projection")
     parser.add_argument("--model", type=str, default=None, help="GMM model, required for a non-stored ordering")
     parser.add_argument(

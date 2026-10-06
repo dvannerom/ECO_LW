@@ -519,7 +519,7 @@ def main():
 	parser.add_argument("--jobs", type=int, default=1, help="Parallel worker processes, one per n_components candidate")
 	parser.add_argument("--load-jobs", type=int, default=1, help="Parallel worker processes for loading/featurizing input+validation files")
 	parser.add_argument("--seed", type=int, default=42)
-	parser.add_argument("--output-csv", default="figures/gmm_diagnostics/gmm_component_diagnostics.csv")
+	parser.add_argument("--output-csv", default="figures/diagnostics/gmm/production/gmm_component_diagnostics.csv")
 	parser.add_argument("--selection-output", default="data/models/selected_n_components.json",
 		help="JSON file written with the selected n_components, consumable by train_GMM.py --n-components-file")
 	parser.add_argument("--exact-shortlist-size", type=int, default=5,

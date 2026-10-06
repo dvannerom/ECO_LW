@@ -188,7 +188,7 @@ if __name__ == "__main__":
 		"--tag", required=True,
 		help="Label used in the output filenames, e.g. a day number or 'monthly'",
 	)
-	parser.add_argument("--output-dir", type=str, default="figures/broadband_flux")
+	parser.add_argument("--output-dir", type=str, default="figures/diagnostics/broadband_flux")
 	args = parser.parse_args()
 
 	mean_grid, stddev_grid, _ = bin_flux_difference_by_lza(args.inputs, args.reference_data)

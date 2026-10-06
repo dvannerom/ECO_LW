@@ -21,7 +21,7 @@ from eco_spectral_response import channel_response_matrix, load_channel_scenario
 
 
 DEFAULT_SCENARIOS = ROOT / "config" / "eco_channel_scenarios.yaml"
-DEFAULT_OUTPUT = ROOT / "figures" / "eco_channel_responses.png"
+DEFAULT_OUTPUT = ROOT / "figures" / "diagnostics" / "instrument" / "eco_channel_responses.png"
 
 
 def plot_responses(scenario_path, output_path, wavelength_min, wavelength_max):
