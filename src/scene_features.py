@@ -10,6 +10,7 @@ SPATIAL_HALF_WINDOW_9X9 = 4
 
 # Channel labels for the 6 averaged fields, in build_scene_features() column order.
 CHANNEL_LABELS = ("C08", "C11", "C12", "C14", "C15", "C16")
+SPECTRAL_CHANNEL_INDICES = (0, 3, 4, 6, 7, 8)
 # BTD labels, in build_scene_features() column order.
 DIFFERENCE_LABELS = ("BTD14-11", "BTD14-15", "BTD14-08", "BTD14-16")
 # Spatial standard-deviation labels, in build_scene_features() column order.
@@ -34,6 +35,60 @@ def feature_names():
         + list(LOCAL_STD_5X5_LABELS)
         + list(LOCAL_STD_9X9_LABELS)
     )
+
+
+def spectral_feature_names():
+    """Return the ten spectral-only feature names in production column order."""
+    return feature_names()[:10]
+
+
+def spectral_features_from_bt(brightness_temperature):
+    """Build spectral features from BT[K] with shape ``(..., 6)``.
+
+    ABI supplies the arithmetic mean of G16/G18 BTs. Sunny supplies one
+    directional view directly, treated as the equivalent mean-view input.
+    The result has shape ``(..., 10)``; no spatial texture is synthesized.
+    """
+    bt = np.asarray(brightness_temperature)
+    if bt.ndim < 1 or bt.shape[-1] != len(CHANNEL_LABELS):
+        raise ValueError("Expected six BT channels in C08/C11/C12/C14/C15/C16 order")
+    differences = bt[..., 3, None] - bt[..., (1, 4, 0, 5)]
+    return np.concatenate((bt, differences), axis=-1)
+
+
+def iter_abi_spectral_features(input_file, chunk_rows=64, pixel_step=10):
+    """Yield ``(features[n, 10], flat_pixel_indices[n])`` from disk-backed ABI.
+
+    Only selected channels and sampled pixels are loaded. No full-grid arrays,
+    geographic coordinates, halos, or spatial statistics are materialized.
+    """
+    if chunk_rows < 1 or pixel_step < 1:
+        raise ValueError("chunk_rows and pixel_step must be positive")
+    with xr.open_dataset(input_file, engine="netcdf4") as dataset:
+        bt16 = dataset["BT_G16_interp"]
+        bt18 = dataset["BT_G18_interp"]
+        if bt16.shape != bt18.shape or bt16.ndim != 3 or bt16.shape[-1] != 9:
+            raise ValueError(f"Expected matching (rows, cols, 9) ABI BT arrays in {input_file}")
+        height, width, _ = bt16.shape
+        for start in range(0, height, chunk_rows * pixel_step):
+            selection = (
+                slice(start, min(start + chunk_rows * pixel_step, height), pixel_step),
+                slice(None, None, pixel_step),
+                list(SPECTRAL_CHANNEL_INDICES),
+            )
+            g16 = bt16[selection].values.astype(np.float32, copy=False)
+            g18 = bt18[selection].values.astype(np.float32, copy=False)
+            valid = np.all(
+                np.isfinite(g16) & np.isfinite(g18)
+                & (g16 > 0) & (g16 < 1000) & (g18 > 0) & (g18 < 1000),
+                axis=-1,
+            )
+            if not np.any(valid):
+                continue
+            rows, columns = np.nonzero(valid)
+            positions = (start + rows * pixel_step) * width + columns * pixel_step
+            averages = (g16[valid] + g18[valid]) / 2.0
+            yield spectral_features_from_bt(averages), positions
 
 
 def _local_valid_stats(values, valid, half_window=SPATIAL_HALF_WINDOW):
