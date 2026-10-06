@@ -12,6 +12,21 @@ Input data:
 
 Potentially generalizable to other satellites (EarthCare, 3MI)
 
+## Mission facts
+
+Authoritative ECO / GOES-proxy / CERES mission parameters (objectives,
+requirements, orbit, instruments, LW channel table, ADM retrieval regime,
+uncertainty framework) live in `docs/mission_context.md`, curated from the ECO
+Report for Mission Assessment (ESA-EOPSM-ECO-RP-5024) with section citations.
+
+Read that file before any discussion of uncertainty, instrument requirements,
+mission design trades, or proxy-to-ECO transfer. Whenever the user supplies new
+mission information, append it there, tagged [RfMA] / [user] / [derived] /
+[assumed], and promote [assumed] entries once confirmed.
+
+The RfMA PDF and its extracted-text sidecar sit in `docs/` and are git-ignored;
+consult them directly when a fact needs checking at source.
+
 ## Coding principles
 
 - Python-first solutions
@@ -58,3 +73,9 @@ Preferred:
 - Functional approach preferred
 - Document units and dimensions
 - Include array shapes in docstrings
+
+## Chat equation formatting
+
+- Use `$$ ... $$` for display equations in chat, with the delimiters on
+  separate lines. This syntax renders correctly in the user's chat interface.
+- Do not use `\[ ... \]` for display equations; it appears as raw LaTeX.
