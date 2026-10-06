@@ -1,0 +1,19 @@
+schema_version: 1
+output_dir: data/uncertainty_runs/extensions
+figure_dir: figures/uncertainty/extensions
+assignment_fractions: [0, 0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50]
+assignment_seeds: [42, 73, 109]
+noise_seeds: [42, 73, 109, 151, 197]
+geometry_sets:
+  wide_2: [0, 70]
+  clustered_2: [50, 60]
+  wide_3: [0, 35, 70]
+  clustered_3: [45, 50, 60]
+  wide_5: [0, 15, 35, 50, 70]
+  clustered_5: [40, 45, 50, 60, 65]
+  wide_8: [0, 10, 20, 30, 40, 50, 60, 70]
+  dense_15: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
+scope: >-
+  Idealized direct multi-view ECO/Sunny geometry sensitivity, equal-weight
+  amplitude/shape fitting; no single-view priors, orbit simulation or angular
+  weighting. ABI assignment stress is not a misclassification probability.
