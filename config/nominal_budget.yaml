@@ -1,0 +1,36 @@
+schema_version: 1
+output_dir: data/uncertainty/nominal
+diagnostic_dir: data/diagnostics/nominal
+figure_dir: figures/uncertainty/nominal
+diagnostic_figure_dir: figures/diagnostics/nominal
+training_days: [245, 247, 254, 261]
+validation_days: [246, 252, 259, 271]
+cache_root: data/uncertainty_runs/convergence/cache/42
+tiles_per_day: 192
+sample_points: 50000
+components: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+nominal_components: 6
+seeds: [42, 73, 109]
+folds: 5
+noise_realizations: 30
+noise_seed: 42
+scenario: rfma_goal_6
+reference_domain_um: [4, 100]
+angles_deg: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
+nedt_k_at_255: 0.4
+product_resolution_km: 10
+spatial:
+  native_resolution_km: 2
+  block_sizes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  nominal_block_size: 5
+  independent_of_other_sources: true
+scope: >-
+  Instantaneous spectral-only simulation on sampled eligible ABI overlap
+  population and grouped held-out Sunny columns. ABI 2-to-10 km box-footprint
+  processing differences are included assuming transfer and independence
+  from the other source errors. Scene-library original modified-log ADM.
+  ABI SRFs define taxonomy; ECO goal SRFs define physical flux retrieval.
+  Assignment transitions are measured on held-out ABI pixels with added NEdT
+  and a fixed GMM, then propagated through Sunny scene ADMs and included under
+  the explicit assumption of similar ECO response. Conditional scene-level
+  transitions are independent of simulated ECO radiometric noise.
