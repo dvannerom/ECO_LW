@@ -1,0 +1,121 @@
+{
+  "provenance": {
+    "schema_version": 1,
+    "code_sha256": {
+      "scripts/run_nominal_budget.py": "9ac52c5248b5db0383a2d92a185901f4a4dd501ec4852d2da70823aca8c4b0ee",
+      "src/nominal_budget.py": "42db50833762541dd913f16a179a8757f1b495c31d6b1bda7737ff381074bfc7",
+      "src/geometry_sensitivity.py": "798cf98cca302502c0e3e6766d0bd8ab7a439f43f77236f1df4f5dd192f66dea",
+      "scripts/find_nComponents.py": "2c3e2ac8065e4296692a50338273b42215af204d0d31cece23e4960da2f70adc",
+      "scripts/average_resolution.py": "127046f0868392f5f7947e0ba601e06671bfdd01407b39dfd79077289a96289b",
+      "scripts/preprocess_data_ABI.py": "7811a91564933d184570aaf0a87ec5598d161359f2788dbfa046a030cd00c3a7",
+      "src/broadband.py": "f658778f7e7380924f9d6185772d733066b3fb3577f964b15e76c6a95018fc9f",
+      "scripts/run_sensitivity_convergence.py": "5e0847c22dcffd31a78cf07de63dc03c5a593e5805082d5a2fceee198761a924",
+      "src/abi_sunny_comparison.py": "5f1829147370572e0c22d66a81cd7dc8ac6c64f432a5f257453a888e5bf75a62",
+      "src/eco_spectral_response.py": "39ff58c480a9d15ece81b356c663843db5081dc7d39fef115b8ea5633cb123c9",
+      "src/sensitivity.py": "ca98d560ab3db8ea01cc74c066f0950995b40f6cb7d5931a987e0052afadac3d",
+      "src/scene_features.py": "5a81588ab328217e7359dc4b6852e4b82d0bbf8d5587d3d90e4ca1e6fb3f70d4",
+      "src/radiometry.py": "b63dfd042ca2795ae30f7ac91bbdf9a6460ef95aea5684abee431bba8130458b",
+      "src/uncertainty.py": "0bcb9328c265edb71e0ff12b3e3f8c09efc8e34a953913f8483c057017d80e11",
+      "src/adm.py": "2a5607dce76ba42b4b89f3cde7836b064b597c9816a419c2a846a7c56ba3677e",
+      "src/adm_fitting.py": "9433055d1f510e4889c1795d655f67c0932d6fefe9214f7fa50da85c4a0300ec",
+      "src/spectral_response.py": "6e83cf0525a69ad88cb0073b780d3a910c1f0dffe890f052f3ab10d736fdcec9"
+    },
+    "configuration_sha256": {
+      "config/nominal_budget.yaml": "8b4c0674d1fbe84bcdf43a3d9ed670edfeab72433488bb0b97059ca56e6f4dda",
+      "config.yaml": "72cca2d867a9d2938ab60f79a5259852adf590facefcb0d7bbcfc9dbdd79b616",
+      "config/eco_channel_scenarios.yaml": "0942c8764a00937920de00f733958b206a3488c9559b120500b3b28fdadf548d"
+    },
+    "inputs": {
+      "0": {
+        "path": "data/uncertainty_runs/convergence/cache/42/245",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "cb525de76208104a23fdd5025463ef6809c4698e9aa0a88fa0a8f9c32e19a65e",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "1": {
+        "path": "data/uncertainty_runs/convergence/cache/42/247",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "4ae4f9a1118240a999f99187cdbf6b896d04aeba6a76b54da0f1a64f667a6b3b",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "2": {
+        "path": "data/uncertainty_runs/convergence/cache/42/254",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "6a83984c90f45d3c3c94c8f49b4e4ab92062afd4c6807b66eb31d9e003feb776",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "3": {
+        "path": "data/uncertainty_runs/convergence/cache/42/261",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "3ed1d494af81687c3182aa83f90ca7c35dfe30639b1a79271de53a1e9904160c",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "4": {
+        "path": "data/uncertainty_runs/convergence/cache/42/246",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "96930e0d485d0173af25ae9dc04f2b4f1aecf828a5b1caf24c6909837fd52d0a",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "5": {
+        "path": "data/uncertainty_runs/convergence/cache/42/252",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "45b54b769317daf16005a4448f098b40082ab77535384d21b90c51ee2cd17c93",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "6": {
+        "path": "data/uncertainty_runs/convergence/cache/42/259",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "1fc1cd038f6fd6f786992709cc51774fe170d928a8b4cfcbaa00422415ca2eb2",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "7": {
+        "path": "data/uncertainty_runs/convergence/cache/42/271",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "ef31b621516888a85b283d8821f80c1d1cff736866758f09cb914091ef1131c2",
+        "identity_method": "relative_path_size_mtime_ns"
+      }
+    },
+    "runtime": {
+      "python": "3.12.9",
+      "numpy": "1.26.4",
+      "scipy": "1.15.2",
+      "scikit-learn": "1.7.2",
+      "PyYAML": "6.0.3"
+    },
+    "input_identity_note": "Code and configuration use SHA-256. Input files/directories use path, size, and mtime metadata to avoid reading large source data."
+  },
+  "manual_components": 6,
+  "scope": "Existing find_nComponents scoring, spectral-only features, cached overlap population",
+  "notes": [
+    "Seed 42 diagnostic fits use existing five-initialization fitter and three bootstrap refits.",
+    "Diagnostic fits are separate from the nominal two-initialization fit; no automatic count override.",
+    "All candidates receive exact production ADM and cubic ABI broadband diagnostics.",
+    "Pooled training uses first-day Planck coefficients, as in existing diagnostic tooling.",
+    "Exact held-out flux scoring preserves per-day Planck coefficients.",
+    "Coverage uses original nine 10-degree bins despite eligibility restricted to 70 degrees."
+  ]
+}

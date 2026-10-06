@@ -1,0 +1,35 @@
+Contributor,ECO uncertainty sources / experiment,Impact on final broadband flux
+Radiometric noise,"RfMA Table 4.1: goal NEdT 0.4 K at 255 K in all six TIR channels; threshold 0.7 K (WV), 0.6 K (CO2), 0.4 K otherwise. Convert NEdT to channel-radiance SD with the SRF-integrated Planck derivative at 255 K. Inject zero-mean Gaussian radiance noise before scene ID; rerun the complete chain against the same noise-free cases.","ECO/Sunny noise only; no scene-selection effect:
+Bias +0.001; SD 0.389; RMSE 0.389 W/m2
+Bias +0.001; SD 0.234; RMSE 0.234 %"
+Spatial resolution,"ABI heterogeneity: compare processing native 2 km radiances then averaging broadband flux to 10 km, against averaging radiances over 5x5 pixels first then rerunning scene ID, ADM and N2BC at 10 km. Match footprints, area weights and valid masks. The 2 km result is the finer-resolution reference, not absolute truth.","ABI proxy, matched 10 km footprints:
+Bias +0.059; SD 1.975; RMSE 1.975 W/m2
+Bias +0.018; SD 0.756; RMSE 0.756 %"
+Scene identification,(1) GMM model sensitivity: refit n_components=6 and 7 with identical training splits and consistent downstream scene ADMs. (2) Fixed-model assignment sensitivity: randomly switch exactly 10% of valid held-out pixels to their second-ranked posterior component; keep the ADM library fixed and rerun downstream flux retrieval.,"ABI GMM 6 vs 7:
+Bias +0.026; SD 0.784; RMSE 0.784 W/m2
+Bias +0.014; SD 0.308; RMSE 0.308 %
+ABI 10% second-choice assignment:
+Bias +0.008; SD 0.218; RMSE 0.218 W/m2
+Bias +0.005; SD 0.093; RMSE 0.093 %"
+Radiance-to-flux conversion,"ADM model form: compare the current regularized angular function with a normalized extension adding a quadratic cos(theta) term. Fit both with identical training data; evaluate held-out scenes and matched view geometries, then propagate band fluxes through fixed N2BC. Enforce positive angular profiles and hemispheric flux normalization.","ECO/Sunny ADM-form change:
+Bias -0.222; SD 0.233; RMSE 0.322 W/m2
+Bias -0.086; SD 0.102; RMSE 0.134 %
+ABI pooled ADM-form change:
+Bias +0.175; SD 2.354; RMSE 2.360 W/m2
+Bias +0.090; SD 0.934; RMSE 0.939 %"
+Narrowband-to-broadband conversion,"Sunny library limitations: representativity, physical realism and outliers. Compare grouped held-out N2BC errors under justified regime reweighting, metadata-based physical screening and robust-fit sensitivity. Keep an untouched evaluation set; never remove scenes solely for large flux residuals. Validate realism against independent evidence.","ECO/Sunny robust vs ordinary N2BC:
+Bias +0.030; SD 0.111; RMSE 0.115 W/m2
+Bias +0.022; SD 0.062; RMSE 0.066 %
+Baseline spectral-only error against truth:
+Bias +0.000; SD 0.944; RMSE 0.944 W/m2
+Bias +0.002; SD 0.492; RMSE 0.492 %
+Representativity and physical-realism terms remain unquantified."
+Covariance / interactions,Matched Sunny spectral residual and angular-plus-interaction increment. Retain their covariance; add new experiments on paired cases with shared perturbations. Stage RMSEs must not be summed in quadrature.,"Baseline spectral/angular Cov -0.0101 % squared.
+Joint minus sum of individual changes: RMSE 0.183 W/m2.
+Joint scenario measured directly; source sensitivities are not added."
+Other unresolved sources,Calibration/drift; SRF and reference-domain uncertainty; CTH/parallax and registration; scene evolution; ADM population and geometry; WFOV anchoring and independent validation. Monthly sampling and stability need separate experiments.,Unquantified; excluded from the existing conditional residual.
+Total broadband-flux error,"Final target: joint propagation with bias, covariance and interactions. Current evidence combines only Sunny angular retrieval and spectral reconstruction. ObsReq 15 concerns instantaneous OLR; ObsReq 16 concerns spectral reconstruction only.","Conditional ECO/Sunny joint error against simulated truth:
+Bias +0.343; SD 1.027; RMSE 1.082 W/m2
+Bias +0.148; SD 0.516; RMSE 0.536 %
+Noise + quadratic ADM + robust N2BC only.
+Full ECO total remains unquantified."

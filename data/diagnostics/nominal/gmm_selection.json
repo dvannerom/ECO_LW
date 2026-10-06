@@ -1,0 +1,1128 @@
+{
+  "candidates": [
+    {
+      "components": 2,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.952903364817596,
+      "heldout_day_log_likelihood": [
+        -4.76756035192107,
+        -5.272850583605209,
+        -4.54206143452387,
+        -5.229141089220236
+      ],
+      "heldout_counts": [
+        26883,
+        23117
+      ],
+      "minimum_occupancy": 0.46234
+    },
+    {
+      "components": 2,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.952903364817596,
+      "heldout_day_log_likelihood": [
+        -4.76756035192107,
+        -5.272850583605209,
+        -4.54206143452387,
+        -5.229141089220236
+      ],
+      "heldout_counts": [
+        23117,
+        26883
+      ],
+      "minimum_occupancy": 0.46234
+    },
+    {
+      "components": 2,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.952902577099809,
+      "heldout_day_log_likelihood": [
+        -4.767556417557614,
+        -5.272841310484236,
+        -4.542063750715967,
+        -5.229148829641418
+      ],
+      "heldout_counts": [
+        26883,
+        23117
+      ],
+      "minimum_occupancy": 0.46234
+    },
+    {
+      "components": 3,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.7759428995821755,
+      "heldout_day_log_likelihood": [
+        -4.492040127649263,
+        -4.977724435735045,
+        -4.406041180839957,
+        -5.22796585410444
+      ],
+      "heldout_counts": [
+        22330,
+        7149,
+        20521
+      ],
+      "minimum_occupancy": 0.14298
+    },
+    {
+      "components": 3,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.853602698647085,
+      "heldout_day_log_likelihood": [
+        -4.648060123946305,
+        -5.088856699455697,
+        -4.471252653680072,
+        -5.206241317506269
+      ],
+      "heldout_counts": [
+        26061,
+        10821,
+        13118
+      ],
+      "minimum_occupancy": 0.21642
+    },
+    {
+      "components": 3,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.853595885599971,
+      "heldout_day_log_likelihood": [
+        -4.648054610882511,
+        -5.088849076711038,
+        -4.471234133020339,
+        -5.206245721785995
+      ],
+      "heldout_counts": [
+        26061,
+        10823,
+        13116
+      ],
+      "minimum_occupancy": 0.21646
+    },
+    {
+      "components": 4,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.647184257651,
+      "heldout_day_log_likelihood": [
+        -4.343299771018895,
+        -4.849144890579189,
+        -4.302537508494411,
+        -5.093754860511504
+      ],
+      "heldout_counts": [
+        6600,
+        19111,
+        10389,
+        13900
+      ],
+      "minimum_occupancy": 0.132
+    },
+    {
+      "components": 4,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.647070967123593,
+      "heldout_day_log_likelihood": [
+        -4.343230060044022,
+        -4.8490320192159,
+        -4.302398440392933,
+        -5.0936233488415175
+      ],
+      "heldout_counts": [
+        6626,
+        10377,
+        19097,
+        13900
+      ],
+      "minimum_occupancy": 0.13252
+    },
+    {
+      "components": 4,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.661368427712763,
+      "heldout_day_log_likelihood": [
+        -4.381664726580857,
+        -4.869311474727744,
+        -4.289279334839774,
+        -5.105218174702679
+      ],
+      "heldout_counts": [
+        13461,
+        4193,
+        11614,
+        20732
+      ],
+      "minimum_occupancy": 0.08386
+    },
+    {
+      "components": 5,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.549305459325817,
+      "heldout_day_log_likelihood": [
+        -4.231276178213419,
+        -4.739270192046348,
+        -4.212024179060491,
+        -5.014651287983008
+      ],
+      "heldout_counts": [
+        9105,
+        9592,
+        18065,
+        10936,
+        2302
+      ],
+      "minimum_occupancy": 0.04604
+    },
+    {
+      "components": 5,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.549336462878781,
+      "heldout_day_log_likelihood": [
+        -4.230754434494945,
+        -4.738967855750993,
+        -4.212253312686354,
+        -5.015370248582834
+      ],
+      "heldout_counts": [
+        9583,
+        2291,
+        18034,
+        9184,
+        10908
+      ],
+      "minimum_occupancy": 0.04582
+    },
+    {
+      "components": 5,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.5493533703860125,
+      "heldout_day_log_likelihood": [
+        -4.2313749706172015,
+        -4.739411542845892,
+        -4.211889728258158,
+        -5.014737239822798
+      ],
+      "heldout_counts": [
+        9615,
+        2302,
+        10917,
+        18065,
+        9101
+      ],
+      "minimum_occupancy": 0.04604
+    },
+    {
+      "components": 6,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.478529706366265,
+      "heldout_day_log_likelihood": [
+        -4.14197327244777,
+        -4.6686395898879685,
+        -4.123404217801638,
+        -4.9801017453276835
+      ],
+      "heldout_counts": [
+        6939,
+        2276,
+        7777,
+        6272,
+        16691,
+        10045
+      ],
+      "minimum_occupancy": 0.04552
+    },
+    {
+      "components": 6,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.478462193004941,
+      "heldout_day_log_likelihood": [
+        -4.141928389516235,
+        -4.668603964227146,
+        -4.123281720967849,
+        -4.980034697308533
+      ],
+      "heldout_counts": [
+        6931,
+        16698,
+        2276,
+        6276,
+        10041,
+        7778
+      ],
+      "minimum_occupancy": 0.04552
+    },
+    {
+      "components": 6,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.479093038619272,
+      "heldout_day_log_likelihood": [
+        -4.1424266067358015,
+        -4.668924888369993,
+        -4.124383728257865,
+        -4.980636931113427
+      ],
+      "heldout_counts": [
+        7754,
+        2277,
+        6246,
+        16621,
+        10080,
+        7022
+      ],
+      "minimum_occupancy": 0.04554
+    },
+    {
+      "components": 7,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.4233152219457095,
+      "heldout_day_log_likelihood": [
+        -4.0907685272665955,
+        -4.62666003712856,
+        -4.029652270969273,
+        -4.946180052418409
+      ],
+      "heldout_counts": [
+        9990,
+        9137,
+        7457,
+        7958,
+        8011,
+        5220,
+        2227
+      ],
+      "minimum_occupancy": 0.04454
+    },
+    {
+      "components": 7,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.42284762622843,
+      "heldout_day_log_likelihood": [
+        -4.090753741864995,
+        -4.625705789779741,
+        -4.028973219976221,
+        -4.9459577532927606
+      ],
+      "heldout_counts": [
+        8000,
+        2236,
+        7465,
+        7995,
+        9134,
+        5179,
+        9991
+      ],
+      "minimum_occupancy": 0.04472
+    },
+    {
+      "components": 7,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.422842989484619,
+      "heldout_day_log_likelihood": [
+        -4.090664060684815,
+        -4.625713283413036,
+        -4.028988077455586,
+        -4.946006536385037
+      ],
+      "heldout_counts": [
+        7466,
+        2233,
+        5178,
+        8006,
+        9126,
+        9983,
+        8008
+      ],
+      "minimum_occupancy": 0.04466
+    },
+    {
+      "components": 8,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.414283935594881,
+      "heldout_day_log_likelihood": [
+        -4.059857165335717,
+        -4.631371154382745,
+        -4.044119787723623,
+        -4.921787634937437
+      ],
+      "heldout_counts": [
+        10661,
+        6527,
+        7835,
+        5136,
+        4546,
+        6673,
+        1728,
+        6894
+      ],
+      "minimum_occupancy": 0.03456
+    },
+    {
+      "components": 8,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.410133885907675,
+      "heldout_day_log_likelihood": [
+        -4.040494825242579,
+        -4.629538792775846,
+        -4.002579647124641,
+        -4.967922278487635
+      ],
+      "heldout_counts": [
+        6777,
+        5068,
+        2063,
+        7036,
+        3430,
+        9409,
+        8577,
+        7640
+      ],
+      "minimum_occupancy": 0.04126
+    },
+    {
+      "components": 8,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.41473276311531,
+      "heldout_day_log_likelihood": [
+        -4.061070645546833,
+        -4.6312347387106785,
+        -4.044455612827734,
+        -4.922170055375996
+      ],
+      "heldout_counts": [
+        6911,
+        1737,
+        6636,
+        7802,
+        6490,
+        10703,
+        4610,
+        5111
+      ],
+      "minimum_occupancy": 0.03474
+    },
+    {
+      "components": 9,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.384861030434333,
+      "heldout_day_log_likelihood": [
+        -4.036139364237885,
+        -4.594250778660322,
+        -3.996592519505379,
+        -4.912461459333746
+      ],
+      "heldout_counts": [
+        6384,
+        2496,
+        8753,
+        1686,
+        7726,
+        4791,
+        4798,
+        4233,
+        9133
+      ],
+      "minimum_occupancy": 0.03372
+    },
+    {
+      "components": 9,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.383681660542258,
+      "heldout_day_log_likelihood": [
+        -4.035092735740397,
+        -4.593576697934843,
+        -3.9955403250947006,
+        -4.910516883399094
+      ],
+      "heldout_counts": [
+        4800,
+        1669,
+        4866,
+        9104,
+        6416,
+        7767,
+        2459,
+        4153,
+        8766
+      ],
+      "minimum_occupancy": 0.03338
+    },
+    {
+      "components": 9,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.378172599519923,
+      "heldout_day_log_likelihood": [
+        -4.028863083607891,
+        -4.5870395575911935,
+        -3.9902345187775103,
+        -4.906553238103096
+      ],
+      "heldout_counts": [
+        8074,
+        4464,
+        2168,
+        5329,
+        6467,
+        9628,
+        7052,
+        5098,
+        1720
+      ],
+      "minimum_occupancy": 0.0344
+    },
+    {
+      "components": 10,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.368262529003449,
+      "heldout_day_log_likelihood": [
+        -4.021833847584742,
+        -4.578818964195672,
+        -3.9808272030752643,
+        -4.891570101158117
+      ],
+      "heldout_counts": [
+        4988,
+        1741,
+        8956,
+        4861,
+        2176,
+        4352,
+        5285,
+        8412,
+        2540,
+        6689
+      ],
+      "minimum_occupancy": 0.03482
+    },
+    {
+      "components": 10,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.358110339808012,
+      "heldout_day_log_likelihood": [
+        -3.988630948212068,
+        -4.569674222779717,
+        -3.974913135019158,
+        -4.899223053221102
+      ],
+      "heldout_counts": [
+        8797,
+        2450,
+        8153,
+        5409,
+        6800,
+        4598,
+        1293,
+        3510,
+        3269,
+        5721
+      ],
+      "minimum_occupancy": 0.02586
+    },
+    {
+      "components": 10,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.358205744766405,
+      "heldout_day_log_likelihood": [
+        -3.9888090702447285,
+        -4.569834251127164,
+        -3.9750258605482722,
+        -4.899153797145456
+      ],
+      "heldout_counts": [
+        3270,
+        2451,
+        4598,
+        8165,
+        5409,
+        8807,
+        3509,
+        6805,
+        5694,
+        1292
+      ],
+      "minimum_occupancy": 0.02584
+    },
+    {
+      "components": 11,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.353765427722227,
+      "heldout_day_log_likelihood": [
+        -3.9871957495927464,
+        -4.5644974131428295,
+        -3.9870981066966498,
+        -4.876270441456682
+      ],
+      "heldout_counts": [
+        8558,
+        2612,
+        1357,
+        4588,
+        2082,
+        6290,
+        4934,
+        4861,
+        8599,
+        3049,
+        3070
+      ],
+      "minimum_occupancy": 0.02714
+    },
+    {
+      "components": 11,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.350468104444953,
+      "heldout_day_log_likelihood": [
+        -3.917709658368414,
+        -4.575982608245045,
+        -4.002246455497788,
+        -4.905933695668565
+      ],
+      "heldout_counts": [
+        3763,
+        2441,
+        4476,
+        3155,
+        5240,
+        3550,
+        6698,
+        4884,
+        5604,
+        1278,
+        8911
+      ],
+      "minimum_occupancy": 0.02556
+    },
+    {
+      "components": 11,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.3540305058251505,
+      "heldout_day_log_likelihood": [
+        -3.9885178511274666,
+        -4.564100178992433,
+        -3.987577655383657,
+        -4.875926337797046
+      ],
+      "heldout_counts": [
+        2588,
+        8522,
+        2991,
+        6352,
+        2076,
+        1344,
+        4938,
+        8689,
+        4603,
+        3023,
+        4874
+      ],
+      "minimum_occupancy": 0.02688
+    },
+    {
+      "components": 12,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.33064344660512,
+      "heldout_day_log_likelihood": [
+        -3.914450848015769,
+        -4.559700564392807,
+        -3.972947132394982,
+        -4.875475241616926
+      ],
+      "heldout_counts": [
+        6337,
+        2853,
+        8537,
+        1669,
+        4758,
+        4678,
+        4900,
+        2656,
+        3994,
+        2455,
+        2206,
+        4957
+      ],
+      "minimum_occupancy": 0.03338
+    },
+    {
+      "components": 12,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.3063001794812585,
+      "heldout_day_log_likelihood": [
+        -3.8564016350742163,
+        -4.549729765100607,
+        -3.9320360296690127,
+        -4.887033288081198
+      ],
+      "heldout_counts": [
+        6036,
+        7765,
+        4030,
+        2317,
+        1238,
+        2192,
+        3877,
+        5990,
+        4947,
+        5943,
+        2968,
+        2697
+      ],
+      "minimum_occupancy": 0.02476
+    },
+    {
+      "components": 12,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.316145286999712,
+      "heldout_day_log_likelihood": [
+        -3.901119057146285,
+        -4.533132627748232,
+        -3.9759388290870294,
+        -4.8543906340172995
+      ],
+      "heldout_counts": [
+        4851,
+        2504,
+        3463,
+        3248,
+        2024,
+        2576,
+        7861,
+        1325,
+        5531,
+        5928,
+        3622,
+        7067
+      ],
+      "minimum_occupancy": 0.0265
+    },
+    {
+      "components": 13,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.307879425844738,
+      "heldout_day_log_likelihood": [
+        -3.872513043124599,
+        -4.542667421620563,
+        -3.9405838117997516,
+        -4.875753426834036
+      ],
+      "heldout_counts": [
+        4313,
+        2768,
+        3247,
+        1369,
+        7167,
+        2496,
+        5939,
+        5255,
+        950,
+        2098,
+        6462,
+        4966,
+        2970
+      ],
+      "minimum_occupancy": 0.019
+    },
+    {
+      "components": 13,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.319624380995942,
+      "heldout_day_log_likelihood": [
+        -3.899427392653439,
+        -4.546074825672594,
+        -3.975760620516684,
+        -4.857234685141051
+      ],
+      "heldout_counts": [
+        4421,
+        2942,
+        4011,
+        8500,
+        1020,
+        2190,
+        4610,
+        4889,
+        2464,
+        2943,
+        5085,
+        1932,
+        4993
+      ],
+      "minimum_occupancy": 0.0204
+    },
+    {
+      "components": 13,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.31079775002375,
+      "heldout_day_log_likelihood": [
+        -3.851056714940841,
+        -4.552192035068669,
+        -3.963776983173823,
+        -4.876165266911666
+      ],
+      "heldout_counts": [
+        1857,
+        6718,
+        5484,
+        5990,
+        4617,
+        3408,
+        3921,
+        963,
+        4330,
+        2752,
+        3181,
+        4125,
+        2654
+      ],
+      "minimum_occupancy": 0.01926
+    },
+    {
+      "components": 14,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.292747881899451,
+      "heldout_day_log_likelihood": [
+        -3.8556030044435343,
+        -4.528987171057031,
+        -3.965806834755684,
+        -4.820594517341553
+      ],
+      "heldout_counts": [
+        3890,
+        2639,
+        9101,
+        1551,
+        4509,
+        4248,
+        4696,
+        2760,
+        3804,
+        2517,
+        2157,
+        4235,
+        847,
+        3046
+      ],
+      "minimum_occupancy": 0.01694
+    },
+    {
+      "components": 14,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.292832003366116,
+      "heldout_day_log_likelihood": [
+        -3.8553061476016413,
+        -4.544855962925708,
+        -3.9475108744896756,
+        -4.823655028447437
+      ],
+      "heldout_counts": [
+        5193,
+        3112,
+        1752,
+        8511,
+        2091,
+        2016,
+        4643,
+        3842,
+        2753,
+        2832,
+        5735,
+        893,
+        4392,
+        2235
+      ],
+      "minimum_occupancy": 0.01786
+    },
+    {
+      "components": 14,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.300780728321589,
+      "heldout_day_log_likelihood": [
+        -3.8538621687164505,
+        -4.5365899493877295,
+        -3.96724503505329,
+        -4.845425760128883
+      ],
+      "heldout_counts": [
+        4023,
+        1792,
+        4155,
+        3055,
+        2600,
+        5589,
+        2420,
+        2179,
+        7503,
+        945,
+        3722,
+        2835,
+        5417,
+        3765
+      ],
+      "minimum_occupancy": 0.0189
+    },
+    {
+      "components": 15,
+      "seed": 42,
+      "heldout_mean_log_likelihood": -4.293300739570401,
+      "heldout_day_log_likelihood": [
+        -3.8638486215146526,
+        -4.534998343564564,
+        -3.9286415251808524,
+        -4.845714468021535
+      ],
+      "heldout_counts": [
+        6857,
+        3125,
+        5455,
+        1576,
+        4293,
+        2567,
+        4275,
+        2897,
+        3397,
+        2230,
+        3008,
+        1978,
+        2892,
+        682,
+        4768
+      ],
+      "minimum_occupancy": 0.01364
+    },
+    {
+      "components": 15,
+      "seed": 73,
+      "heldout_mean_log_likelihood": -4.263025066482762,
+      "heldout_day_log_likelihood": [
+        -3.8057929397921137,
+        -4.523128521652225,
+        -3.9110307955532275,
+        -4.812148008933482
+      ],
+      "heldout_counts": [
+        3632,
+        1528,
+        4572,
+        2886,
+        4275,
+        2740,
+        2081,
+        2939,
+        2234,
+        833,
+        2786,
+        4218,
+        2196,
+        3107,
+        9973
+      ],
+      "minimum_occupancy": 0.01666
+    },
+    {
+      "components": 15,
+      "seed": 109,
+      "heldout_mean_log_likelihood": -4.292551412359354,
+      "heldout_day_log_likelihood": [
+        -3.8476171379835793,
+        -4.520194406622539,
+        -3.949609898399303,
+        -4.852784206431992
+      ],
+      "heldout_counts": [
+        931,
+        2836,
+        4474,
+        1022,
+        2296,
+        2922,
+        3801,
+        1923,
+        4736,
+        2323,
+        5235,
+        6896,
+        2821,
+        4719,
+        3065
+      ],
+      "minimum_occupancy": 0.01862
+    }
+  ],
+  "provenance": {
+    "schema_version": 1,
+    "code_sha256": {
+      "scripts/run_nominal_budget.py": "9ac52c5248b5db0383a2d92a185901f4a4dd501ec4852d2da70823aca8c4b0ee",
+      "src/nominal_budget.py": "42db50833762541dd913f16a179a8757f1b495c31d6b1bda7737ff381074bfc7",
+      "src/geometry_sensitivity.py": "798cf98cca302502c0e3e6766d0bd8ab7a439f43f77236f1df4f5dd192f66dea",
+      "scripts/find_nComponents.py": "2c3e2ac8065e4296692a50338273b42215af204d0d31cece23e4960da2f70adc",
+      "scripts/average_resolution.py": "127046f0868392f5f7947e0ba601e06671bfdd01407b39dfd79077289a96289b",
+      "scripts/preprocess_data_ABI.py": "7811a91564933d184570aaf0a87ec5598d161359f2788dbfa046a030cd00c3a7",
+      "src/broadband.py": "f658778f7e7380924f9d6185772d733066b3fb3577f964b15e76c6a95018fc9f",
+      "scripts/run_sensitivity_convergence.py": "5e0847c22dcffd31a78cf07de63dc03c5a593e5805082d5a2fceee198761a924",
+      "src/abi_sunny_comparison.py": "5f1829147370572e0c22d66a81cd7dc8ac6c64f432a5f257453a888e5bf75a62",
+      "src/eco_spectral_response.py": "39ff58c480a9d15ece81b356c663843db5081dc7d39fef115b8ea5633cb123c9",
+      "src/sensitivity.py": "ca98d560ab3db8ea01cc74c066f0950995b40f6cb7d5931a987e0052afadac3d",
+      "src/scene_features.py": "5a81588ab328217e7359dc4b6852e4b82d0bbf8d5587d3d90e4ca1e6fb3f70d4",
+      "src/radiometry.py": "b63dfd042ca2795ae30f7ac91bbdf9a6460ef95aea5684abee431bba8130458b",
+      "src/uncertainty.py": "0bcb9328c265edb71e0ff12b3e3f8c09efc8e34a953913f8483c057017d80e11",
+      "src/adm.py": "2a5607dce76ba42b4b89f3cde7836b064b597c9816a419c2a846a7c56ba3677e",
+      "src/adm_fitting.py": "9433055d1f510e4889c1795d655f67c0932d6fefe9214f7fa50da85c4a0300ec",
+      "src/spectral_response.py": "6e83cf0525a69ad88cb0073b780d3a910c1f0dffe890f052f3ab10d736fdcec9"
+    },
+    "configuration_sha256": {
+      "config/nominal_budget.yaml": "8b4c0674d1fbe84bcdf43a3d9ed670edfeab72433488bb0b97059ca56e6f4dda",
+      "config.yaml": "72cca2d867a9d2938ab60f79a5259852adf590facefcb0d7bbcfc9dbdd79b616",
+      "config/eco_channel_scenarios.yaml": "0942c8764a00937920de00f733958b206a3488c9559b120500b3b28fdadf548d"
+    },
+    "inputs": {
+      "0": {
+        "path": "data/uncertainty_runs/convergence/cache/42/245",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "cb525de76208104a23fdd5025463ef6809c4698e9aa0a88fa0a8f9c32e19a65e",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "1": {
+        "path": "data/uncertainty_runs/convergence/cache/42/247",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "4ae4f9a1118240a999f99187cdbf6b896d04aeba6a76b54da0f1a64f667a6b3b",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "2": {
+        "path": "data/uncertainty_runs/convergence/cache/42/254",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "6a83984c90f45d3c3c94c8f49b4e4ab92062afd4c6807b66eb31d9e003feb776",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "3": {
+        "path": "data/uncertainty_runs/convergence/cache/42/261",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "3ed1d494af81687c3182aa83f90ca7c35dfe30639b1a79271de53a1e9904160c",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "4": {
+        "path": "data/uncertainty_runs/convergence/cache/42/246",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "96930e0d485d0173af25ae9dc04f2b4f1aecf828a5b1caf24c6909837fd52d0a",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "5": {
+        "path": "data/uncertainty_runs/convergence/cache/42/252",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "45b54b769317daf16005a4448f098b40082ab77535384d21b90c51ee2cd17c93",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "6": {
+        "path": "data/uncertainty_runs/convergence/cache/42/259",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "1fc1cd038f6fd6f786992709cc51774fe170d928a8b4cfcbaa00422415ca2eb2",
+        "identity_method": "relative_path_size_mtime_ns"
+      },
+      "7": {
+        "path": "data/uncertainty_runs/convergence/cache/42/271",
+        "exists": true,
+        "kind": "directory_inventory",
+        "file_count": 11,
+        "size_bytes": 287623032,
+        "inventory_sha256": "ef31b621516888a85b283d8821f80c1d1cff736866758f09cb914091ef1131c2",
+        "identity_method": "relative_path_size_mtime_ns"
+      }
+    },
+    "runtime": {
+      "python": "3.12.9",
+      "numpy": "1.26.4",
+      "scipy": "1.15.2",
+      "scikit-learn": "1.7.2",
+      "PyYAML": "6.0.3"
+    },
+    "input_identity_note": "Code and configuration use SHA-256. Input files/directories use path, size, and mtime metadata to avoid reading large source data."
+  },
+  "components": 6,
+  "seed": 73,
+  "selection": "Manually configured nominal count; best held-out initialization at that count",
+  "diagnostic_one_se_components": 6,
+  "best_likelihood_components": 15,
+  "day_standard_error": 0.241893743504956,
+  "likelihood_threshold": -4.504918809987719,
+  "initialization_stability": [
+    {
+      "seed_a": 42,
+      "seed_b": 73,
+      "adjusted_rand": 0.999344512980337
+    },
+    {
+      "seed_a": 42,
+      "seed_b": 109,
+      "adjusted_rand": 0.992963529093035
+    },
+    {
+      "seed_a": 73,
+      "seed_b": 109,
+      "adjusted_rand": 0.9923109527369605
+    }
+  ],
+  "best_at_search_boundary": true,
+  "heldout_log_density_p01": -10.798579923803313,
+  "population_counts": [
+    1048631,
+    2550075,
+    353107,
+    966474,
+    1557081,
+    1190732
+  ],
+  "by_day": {
+    "246": [
+      204806,
+      753808,
+      107075,
+      193173,
+      331574,
+      324864
+    ],
+    "252": [
+      242707,
+      621522,
+      106358,
+      291611,
+      395498,
+      258629
+    ],
+    "259": [
+      294819,
+      713277,
+      59950,
+      209001,
+      379266,
+      260762
+    ],
+    "271": [
+      306299,
+      461468,
+      79724,
+      272689,
+      450743,
+      346477
+    ]
+  },
+  "population_scope": "Eligible complete overlap tiles on four held-out days, equal native-pixel weight; not global climatology",
+  "selection_caution": "Held-out days used for selection, not an independent final classifier accuracy test; stability diagnostics retained"
+}
