@@ -22,6 +22,7 @@ if str(SRC) not in sys.path:
 
 from eco_spectral_response import channel_response_matrix, load_channel_scenarios
 from adm import elmer, radiance_integrand
+from uncertainty import build_provenance, sha256_file
 
 
 RESPONSE_CATALOG = ROOT / "config" / "eco_channel_scenarios.yaml"
@@ -33,6 +34,23 @@ DEFAULT_N2BC_MODELS = ROOT / "data" / "uncertainty" / "eco_n2bc_cv_models.joblib
 DEFAULT_N2BC_METRICS = ROOT / "data" / "uncertainty" / "eco_n2bc_stage_metrics.json"
 DEFAULT_ADM_DIR = ROOT / "data" / "uncertainty" / "eco_adm_retrieval"
 DEFAULT_ADM_METRICS = ROOT / "data" / "uncertainty" / "eco_adm_stage_metrics.json"
+
+
+def evaluation_provenance(args, input_paths):
+    return build_provenance(
+        root=ROOT,
+        code_paths=(
+            Path(__file__).resolve(),
+            ROOT / "src" / "adm.py",
+            ROOT / "src" / "eco_spectral_response.py",
+        ),
+        configuration_paths=(
+            ROOT / "config.yaml",
+            args.channel_scenarios.resolve(),
+            args.error_budget.resolve(),
+        ),
+        input_paths=input_paths,
+    )
 
 
 def load_sunny_library(sunny_dir, available_view_angles_deg):
@@ -231,6 +249,22 @@ def find_requirement(error_budget, requirement_id):
         if requirement.get("rfmA_id") == requirement_id:
             return requirement
     raise KeyError(f"Requirement {requirement_id!r} not found in error budget")
+
+
+def requirement_summary(error_budget, requirement_id):
+    requirement = find_requirement(error_budget, requirement_id)
+    return {
+        "id": requirement_id,
+        "source": requirement["source"],
+        "quantity": requirement.get("quantity"),
+        "aggregation": requirement.get("aggregation"),
+        "units": requirement.get("units"),
+        "wavelength_range": requirement.get("wavelength_range"),
+        "goal": requirement.get("goal"),
+        "threshold": requirement.get("threshold"),
+        "maximum": requirement.get("maximum"),
+        "confidence_level": requirement.get("confidence_level"),
+    }
 
 
 def evaluate_scenario(
@@ -548,6 +582,9 @@ def assessment_metadata(args, channel_catalog, broadband_flux, scene_ids, spectr
             "folds": args.folds,
             "k2_convention": "2 times sample standard deviation; provisional comparison convention, not confirmed identical to the RfMA fitting-noise definition.",
         },
+        "provenance": evaluation_provenance(
+            args, {"sunny_library": args.sunny_dir.resolve()}
+        ),
     }
 
 
@@ -637,6 +674,9 @@ def retrieve_adm_stage(args, channel_catalog, scenarios):
         "geometry": retrieval_geometry,
         "scene_index_count": int(np.unique(scene_ids).size),
         "scenarios": {},
+        "provenance": evaluation_provenance(
+            args, {"sunny_library": args.sunny_dir.resolve()}
+        ),
     }
     args.adm_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -680,6 +720,21 @@ def combine_chain_stages(
     combined = {
         "assessment": "ECO simulated angular-radiance to ADM narrowband-flux to broadband-OLR chain",
         **{key: value for key, value in n2bc_metrics.items() if key != "scenarios"},
+        "branch_provenance": {
+            "n2bc": n2bc_metrics.get("provenance"),
+            "adm": adm_metrics.get("provenance"),
+            "abi_proxy": abi_adm_evidence.get("provenance"),
+        },
+        "provenance": evaluation_provenance(
+            args,
+            {
+                "n2bc_models": args.n2bc_models_input.resolve(),
+                "n2bc_metrics": args.n2bc_metrics_input.resolve(),
+                "adm_metrics": args.adm_metrics_input.resolve(),
+                "adm_retrieval_products": args.adm_output_dir.resolve(),
+                "abi_adm_proxy_summary": args.abi_adm_evidence.resolve(),
+            },
+        ),
         "dependency_structure": {
             "parallel_branches": {
                 "n2bc_coefficients": "Fit on true spectrally integrated channel fluxes and broadband OLR.",
@@ -692,6 +747,19 @@ def combine_chain_stages(
             "combination_policy": "ABI proxy variability is retained as separate evidence and is not added to Sunny-derived ECO uncertainty without channel/scene/geometry transfer validation.",
         },
         "scenarios": {},
+    }
+    error_budget = yaml.safe_load(args.error_budget.read_text())
+    combined.pop("requirement", None)
+    combined["requirement_mappings"] = {
+        "n2bc_only_true_band_flux": requirement_summary(
+            error_budget, "ObsReq_16"
+        ),
+        "end_to_end_adm_plus_n2bc": requirement_summary(
+            error_budget, "ObsReq_15"
+        ),
+        "spectral_reference_definition": requirement_summary(
+            error_budget, "ObsReq_8"
+        ),
     }
     for scenario_id, model_data in model_bundle["scenarios"].items():
         adm_path = args.adm_output_dir / f"{scenario_id}.npz"
@@ -779,6 +847,15 @@ def combine_chain_stages(
                 for row in rows:
                     writer.writerow({"scenario_id": scenario_id, **row})
 
+    residual_path = args.residuals_output.resolve()
+    try:
+        residual_path_display = residual_path.relative_to(ROOT).as_posix()
+    except ValueError:
+        residual_path_display = str(residual_path)
+    combined["derived_residuals"] = {
+        "path": residual_path_display,
+        "sha256": sha256_file(residual_path),
+    }
     with args.metrics_output.open("w") as handle:
         json.dump(combined, handle, indent=2)
     print(f"Wrote joined ECO chain metrics: {args.metrics_output}", flush=True)

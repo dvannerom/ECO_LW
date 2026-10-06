@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_METRICS = ROOT / "data" / "uncertainty" / "eco_spectral_reconstruction.json"
 DEFAULT_RESIDUALS = ROOT / "data" / "uncertainty" / "eco_spectral_residuals.csv"
 DEFAULT_ERROR_BUDGET = ROOT / "config" / "error_budget.yaml"
-DEFAULT_OUTPUT_DIR = ROOT / "figures" / "uncertainty"
+DEFAULT_OUTPUT_DIR = ROOT / "figures" / "uncertainty" / "spectral_angular"
 
 SCENARIO_LABELS = {
     "rfma_goal_6": "RfMA goal (6 bands)",
@@ -34,7 +34,9 @@ def load_assessment(metrics_path, residuals_path, error_budget_path):
     phase_zero_k2 = error_budget["phase_0_evidence"][
         "lw_narrowband_to_broadband_fit_noise"
     ]["value"]
-    requirement = metrics["requirement"]
+    requirement = metrics.get("requirement_mappings", {}).get(
+        "n2bc_only_true_band_flux", metrics.get("requirement")
+    )
     abi_adm_evidence = metrics["additional_proxy_evidence"]["abi_adm_variability"]
     residual_groups = {
         ("unstratified", "clear_sky"): [],
@@ -109,13 +111,6 @@ def plot_scenario_comparison(metrics, requirement, phase_zero_k2, output_path):
             label=label,
         )
     axis.axvline(
-        requirement["maximum_percent"],
-        color="#a83232",
-        linestyle="--",
-        linewidth=1.6,
-        label=f"ObsReq 16: {requirement['maximum_percent']:.2f}%",
-    )
-    axis.axvline(
         phase_zero_k2,
         color="#555555",
         linestyle=":",
@@ -129,12 +124,14 @@ def plot_scenario_comparison(metrics, requirement, phase_zero_k2, output_path):
     axis.grid(axis="x", color="#d7d7d7", linewidth=0.8)
     axis.set_axisbelow(True)
     axis.legend(loc="lower right", frameon=False, fontsize=8)
+    requirement_id = requirement.get("id", "ObsReq_16")
     figure.text(
         0.01,
         0.01,
-        "Provisional k=2 convention; RfMA Phase 0 metric may not be directly comparable. "
-        "N2BC-only uses true integrated band flux; end-to-end uses ADM-retrieved band flux. "
-        "15-view, noise-free ADM simulation; k=2 convention and SRFs remain provisional.",
+        f"{requirement_id} maps to N2BC-only; ObsReq 15 maps to end-to-end. "
+        "Plotted 2 x SD is scatter excluding bias, not accuracy or compliance. "
+        "RfMA Phase 0 fit-noise metric may not be directly comparable. "
+        "15-view, noise-free ADM simulation and SRFs remain conditional.",
         fontsize=8,
         color="#555555",
     )

@@ -1,0 +1,152 @@
+schema_version: 1
+selection_policy: >-
+  Use the configured ECO channel scenario and fixed N2BC model, with all
+  held-out Sunny regimes pooled. Choose evidence appropriate to each
+  contributor, not the smallest clear/cloud error. ABI experiments remain
+  proxy sensitivities until their transfer to ECO is justified.
+impact_statistic: >-
+  Signed bias, sample SD and RMSE of paired changes in final broadband flux;
+  retain the signed covariance and interactions. Report W m-2 and relative
+  percent when available. Missing impacts are not zero.
+contributors:
+  - id: radiometric_noise
+    label: Radiometric noise
+    sources: >-
+      RfMA Table 4.1: goal NEdT 0.4 K at 255 K in all six TIR channels;
+      threshold 0.7 K (WV), 0.6 K (CO2), 0.4 K otherwise.
+      Convert NEdT to channel-radiance SD with the SRF-integrated Planck
+      derivative at 255 K. Inject zero-mean Gaussian radiance noise before
+      scene ID; rerun the complete chain against the same noise-free cases.
+    status: pending
+    impact: "Pending: NEdT is an input, not a broadband-flux error."
+    experiment:
+      evidence: Sunny convolved with ECO responses; ABI proxy tests separately
+      noise_model: constant radiance SD derived from NEdT at 255 K
+      reference_temperature_k: 255
+      goal_nedt_k: [0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
+      threshold_nedt_k: [0.7, 0.4, 0.4, 0.4, 0.4, 0.6]
+      correlation: independent channels/views initially; explicitly assumed, not verified
+      seed: 42
+      realizations: null
+      caveat: >-
+        Constant NEdT at every scene temperature would be a different model.
+        Requirements do not specify all noise correlations. Calibration and
+        drift are separate missing terms. Set realization count before running.
+
+  - id: spatial_resolution
+    label: Spatial resolution
+    sources: >-
+      ABI heterogeneity: compare processing native 2 km radiances then
+      averaging broadband flux to 10 km, against averaging radiances over
+      5x5 pixels first then rerunning scene ID, ADM and N2BC at 10 km.
+      Match footprints, area weights and valid masks. The 2 km result is
+      the finer-resolution reference, not absolute truth.
+    status: pending
+    impact: "Pending: paired 10 km flux difference; ABI proxy sensitivity."
+    experiment:
+      native_resolution_km: 2
+      product_resolution_km: 10
+      block_size: 5
+      comparison: average(process(L_2km)) versus process(average(L_2km))
+      averaging_domain: radiance, not brightness temperature
+      model_policy: fixed trained models first; assess coarse-resolution retraining separately
+      caveat: >-
+        ECO has a 2 km TIR measurement goal and a 10 km flux-product goal.
+        Coarsening inputs is a sensitivity experiment, not a requirement to
+        discard native camera detail. Texture features change physical support.
+
+  - id: scene_identification
+    label: Scene identification
+    sources: >-
+      (1) GMM model sensitivity: refit n_components=6 and 7 with identical
+      training splits and consistent downstream scene ADMs.
+      (2) Fixed-model assignment sensitivity: randomly switch exactly 10%
+      of valid held-out pixels to their second-ranked posterior component;
+      keep the ADM library fixed and rerun downstream flux retrieval.
+    status: pending
+    impact: "Pending: report model and assignment impacts separately; 10% is an assumed scenario."
+    experiment:
+      n_components: [6, 7]
+      baseline_n_components: 7
+      second_choice_fraction: 0.10
+      pixel_selection: uniform without replacement over valid held-out pixels
+      seed: 42
+      realizations: null
+      caveat: >-
+        Changing component count requires matching scene ADM libraries, not
+        reusing numeric labels. Second-choice assignment is sensitivity, not
+        measured physical misclassification. Sunny lacks spatial texture;
+        ABI-to-ECO scene transfer requires a common justified feature space.
+
+  - id: radiance_to_flux
+    label: Radiance-to-flux conversion
+    sources: >-
+      ADM model form: compare the current regularized angular function
+      with a normalized extension adding a quadratic cos(theta) term.
+      Fit both with identical training data; evaluate held-out scenes and
+      matched view geometries, then propagate band fluxes through fixed N2BC.
+      Enforce positive angular profiles and hemispheric flux normalization.
+    status: pending
+    impact: "Pending model comparison. Existing angular + interaction evidence:"
+    supporting_component: angular_plus_interaction_increment
+    experiment:
+      baseline: repository regularized ADM
+      candidate: baseline angular basis plus cos(theta)^2 - cos(55 deg)^2
+      candidate_status: proposed; coefficient constraints and fitting policy require validation
+      validation: grouped held-out scenes; representative N=1..20 geometry scenarios
+      caveat: >-
+        A two-view pair cannot independently identify amplitude and two shape
+        coefficients without additional constraints or pooled fitting.
+        The existing Sunny angular increment is not an ADM-model comparison.
+        Population spread and geometry uncertainty remain separate gaps.
+
+  - id: narrowband_to_broadband
+    label: Narrowband-to-broadband conversion
+    sources: >-
+      Sunny library limitations: representativity, physical realism and
+      outliers. Compare grouped held-out N2BC errors under justified regime
+      reweighting, metadata-based physical screening and robust-fit sensitivity.
+      Keep an untouched evaluation set; never remove scenes solely for large
+      flux residuals. Validate realism against independent evidence.
+    status: pending
+    impact: "Pending library-sensitivity experiments. Existing spectral-only evidence:"
+    supporting_component: spectral_only
+    experiment:
+      grouping: shared clear/cloud scene index
+      reweighting: observational regime weights only with justified ABI-to-ECO mapping
+      screening: physical criteria from metadata; retain exclusions and unscreened scores
+      outliers: compare standard and robust training fits on the same held-out cases
+      caveat: >-
+        Library sensitivity does not quantify absent regimes or RT model
+        discrepancy by itself. Cross-validation within Sunny is conditional
+        evidence, not independent validation of real-world spectral accuracy.
+
+  - id: covariance
+    label: Covariance / interactions
+    sources: >-
+      Matched Sunny spectral residual and angular-plus-interaction increment.
+      Retain their covariance; add new experiments on paired cases with shared
+      perturbations. Stage RMSEs must not be summed in quadrature.
+    status: existing_conditional
+    impact: "Existing spectral/angular covariance:"
+
+  - id: remaining_gaps
+    label: Other unresolved sources
+    sources: >-
+      Calibration/drift; SRF and reference-domain uncertainty; CTH/parallax
+      and registration; scene evolution; ADM population and geometry;
+      WFOV anchoring and independent validation. Monthly sampling and
+      stability need separate experiments.
+    status: pending
+    impact: "Unquantified; excluded from the existing conditional residual."
+
+  - id: total
+    label: Total broadband-flux error
+    sources: >-
+      Final target: joint propagation with bias, covariance and interactions.
+      Current evidence combines only Sunny angular retrieval and spectral
+      reconstruction. ObsReq 15 concerns instantaneous OLR; ObsReq 16
+      concerns spectral reconstruction only.
+    status: incomplete
+    impact: "Full ECO total pending. Existing conditional angular + spectral residual:"
+    supporting_component: total_end_to_end

@@ -2,13 +2,159 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
+import json
+import platform
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
 import numpy as np
 
 
 AVERAGING_CLASSES = {"random", "scene_dependent", "systematic"}
+_HASH_BLOCK_SIZE = 1024 * 1024
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while block := source.read(_HASH_BLOCK_SIZE):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _relative_path(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
+def _path_identity(path: Path, root: Path) -> dict[str, object]:
+    """Fingerprint a source by path, size, and mtime without reading large inputs."""
+    path = path.resolve()
+    if not path.exists():
+        return {"path": _relative_path(path, root), "exists": False}
+    if path.is_file():
+        stat = path.stat()
+        return {
+            "path": _relative_path(path, root),
+            "exists": True,
+            "kind": "file",
+            "size_bytes": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+        }
+
+    entries = []
+    for child in sorted(item for item in path.rglob("*") if item.is_file()):
+        stat = child.stat()
+        entries.append(
+            (
+                child.relative_to(path).as_posix(),
+                stat.st_size,
+                stat.st_mtime_ns,
+            )
+        )
+    serialized = json.dumps(entries, separators=(",", ":"), ensure_ascii=True)
+    return {
+        "path": _relative_path(path, root),
+        "exists": True,
+        "kind": "directory_inventory",
+        "file_count": len(entries),
+        "size_bytes": sum(entry[1] for entry in entries),
+        "inventory_sha256": hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
+        "identity_method": "relative_path_size_mtime_ns",
+    }
+
+
+def _runtime_identity() -> dict[str, str]:
+    distributions = {
+        "numpy": "numpy",
+        "scipy": "scipy",
+        "scikit-learn": "scikit-learn",
+        "PyYAML": "PyYAML",
+    }
+    versions = {}
+    for label, distribution in distributions.items():
+        try:
+            versions[label] = importlib.metadata.version(distribution)
+        except importlib.metadata.PackageNotFoundError:
+            versions[label] = "not-installed"
+    return {"python": platform.python_version(), **versions}
+
+
+def build_provenance(
+    *,
+    root: Path,
+    code_paths: Sequence[Path],
+    configuration_paths: Sequence[Path],
+    input_paths: Mapping[str, Path],
+) -> dict[str, object]:
+    """Capture exact code/config hashes and bounded-cost input inventory identities."""
+    root = root.resolve()
+
+    def hash_files(paths: Sequence[Path]) -> dict[str, str]:
+        return {
+            _relative_path(path, root): sha256_file(path.resolve())
+            for path in paths
+        }
+
+    return {
+        "schema_version": 1,
+        "code_sha256": hash_files(code_paths),
+        "configuration_sha256": hash_files(configuration_paths),
+        "inputs": {
+            name: _path_identity(path, root) for name, path in input_paths.items()
+        },
+        "runtime": _runtime_identity(),
+        "input_identity_note": (
+            "Code and configuration use SHA-256. Input files/directories use "
+            "path, size, and mtime metadata to avoid reading large source data."
+        ),
+    }
+
+
+def check_provenance(provenance: object, root: Path) -> dict[str, object]:
+    """Check recorded code, configuration, and input identities against disk."""
+    if not isinstance(provenance, dict) or provenance.get("schema_version") != 1:
+        return {"status": "provenance_missing_or_unsupported", "mismatches": []}
+    root = root.resolve()
+    mismatches = []
+
+    for section in ("code_sha256", "configuration_sha256"):
+        identities = provenance.get(section)
+        if not isinstance(identities, dict):
+            mismatches.append(section)
+            continue
+        for relative_path, expected_hash in identities.items():
+            path = Path(relative_path)
+            if not path.is_absolute():
+                path = root / path
+            if not path.is_file() or sha256_file(path) != expected_hash:
+                mismatches.append(str(relative_path))
+
+    inputs = provenance.get("inputs")
+    if not isinstance(inputs, dict):
+        mismatches.append("inputs")
+    else:
+        for name, expected_identity in inputs.items():
+            if not isinstance(expected_identity, dict):
+                mismatches.append(str(name))
+                continue
+            relative_path = Path(str(expected_identity.get("path", "")))
+            path = relative_path if relative_path.is_absolute() else root / relative_path
+            if _path_identity(path, root) != expected_identity:
+                mismatches.append(str(name))
+
+    runtime = provenance.get("runtime")
+    if runtime != _runtime_identity():
+        mismatches.append("runtime")
+    return {
+        "status": "stale" if mismatches else "current",
+        "mismatches": mismatches,
+    }
 
 
 @dataclass(frozen=True)

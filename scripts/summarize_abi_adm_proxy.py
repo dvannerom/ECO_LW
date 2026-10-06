@@ -18,6 +18,7 @@ if str(SRC) not in sys.path:
 from adm import radiance_linear
 from netcdf_io import load_data
 from spectral_response import CHANNELS
+from uncertainty import build_provenance
 
 FILENAME_PATTERN = re.compile(
     r"^ADM_(?P<day>\d+)_res(?P<resolution>\d+)km_C(?P<channel>\d+)_scene(?P<scene>\d+)\.nc$"
@@ -160,6 +161,20 @@ def main():
     result["requirement_traceability"] = error_budget["evidence_mappings"][
         "abi_adm_proxy_variability"
     ]
+    result["provenance"] = build_provenance(
+        root=ROOT,
+        code_paths=(
+            Path(__file__).resolve(),
+            ROOT / "src" / "adm.py",
+            ROOT / "src" / "netcdf_io.py",
+            ROOT / "src" / "spectral_response.py",
+        ),
+        configuration_paths=(
+            ROOT / "config.yaml",
+            args.error_budget.resolve(),
+        ),
+        input_paths={"abi_adm_directory": args.inputs[0].resolve().parent},
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w") as handle:
         json.dump(result, handle, indent=2)

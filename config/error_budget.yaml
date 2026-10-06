@@ -30,6 +30,15 @@ scope:
     selection_policy: "Evaluate each configured ECO channel scenario; GOES channels remain proxy inputs and are not mutually exclusive with ECO scenarios."
 
 requirements:
+  broadband_olr_definition:
+    rfmA_id: ObsReq_8
+    source: "RfMA §4.2.2, p.36"
+    quantity: broadband_spectral_interval
+    aggregation: "monthly_goal_to_seasonal_threshold_flux_maps"
+    units: um
+    wavelength_range: [4.0, 100.0]
+    note: "The Sunny study integration over 2.5-500 um is a separate reference convention and must not be silently substituted."
+
   average_olr_accuracy:
     rfmA_id: ObsReq_10
     source: "RfMA §4.2.2, p.37"
@@ -172,6 +181,13 @@ requirements:
     aggregation: "views_used_in_one_flux_retrieval"
     criterion: "Views sufficiently close in time to be statistically simultaneous relative to scene dynamics."
 
+  scene_identification_and_coregistration:
+    rfmA_id: ObsReq_17
+    source: "RfMA §4.2.2, p.40"
+    quantity: scene_identification_and_coregistration
+    aggregation: "instantaneous_multiangular_flux_retrieval"
+    criterion: "Spectral and spatial information supports scene identification and co-registration of multi-angular views."
+
   imagery_radiometer_cross_calibration:
     rfmA_id: ObsReq_14
     source: "RfMA §4.2.2, p.38; §6.6, p.71"
@@ -218,7 +234,127 @@ phase_0_evidence:
     comparison_requirement: ObsReq_16
     note: "Evidence/result, not itself a requirement or a per-source allocation."
 
-uncertainty_components: {}
+uncertainty_components:
+  sunny_n2bc_spectral_only:
+    quantity: "Held-out narrowband-to-broadband OLR relative residual from true integrated ECO band fluxes"
+    units: percent
+    statistic: "Signed mean bias, sample standard deviation, RMSE; report clear/cloud regimes separately"
+    requirement_ids: [ObsReq_16]
+    source: "GERB/Clerbaux Sunny hemispheric spectral flux; ECO scenario SRFs"
+    derivation: "Grouped five-fold validation; shared clear/cloud scene indices remain in one fold"
+    domain: "Conditional on Sunny simulation library, modeled SRFs, 2.5-500 um reference integration, and regression family"
+    aggregation_scale: "Instantaneous simulated scene; not spatially or temporally aggregated"
+    correlation_behavior: "Do not combine with other terms without matched residual covariance."
+    evidence_status: "Conditional simulation evidence; not compliance."
+
+  sunny_angular_plus_spectral:
+    quantity: "Held-out broadband OLR relative residual after ADM-retrieved band fluxes and fold-specific N2BC"
+    units: percent
+    statistic: "Paired spectral-only and end-to-end residuals; signed bias, sample spread, and covariance decomposition"
+    requirement_ids: [ObsReq_15]
+    source: "GERB/Clerbaux Sunny directional radiances and hemispheric flux; ECO scenario SRFs"
+    derivation: "Apply models trained on true band fluxes to held-out ADM-retrieved band fluxes; pair by shared scene index"
+    domain: "Idealized 15-view, noise-free, 0-70 degree Sunny retrieval; not representative N=1..20 mission geometry"
+    aggregation_scale: "Instantaneous simulated scene; not spatially or temporally aggregated"
+    correlation_behavior: "Retain observed covariance between spectral-only residual and angular-plus-interaction increment."
+    evidence_status: "Conditional simulation evidence; not compliance."
+
+  sunny_adm_narrowband_diagnostic:
+    quantity: "ADM-retrieved ECO band-flux error relative to true simulated hemispheric band flux"
+    units: percent
+    statistic: "Signed mean bias, sample standard deviation, and RMSE by channel and clear/cloud regime"
+    requirement_ids: [ObsReq_12, ObsReq_15]
+    source: "GERB/Clerbaux Sunny directional radiance and hemispheric flux; ECO scenario SRFs"
+    derivation: "Per-scene/channel ADM retrieval compared with integrated true band flux"
+    domain: "Idealized 15-view, noise-free simulation; not representative of the mission's full geometry/noise population"
+    aggregation_scale: "Instantaneous simulated scene/channel"
+    correlation_behavior: "Channel covariance is unavailable; do not combine channels independently."
+    evidence_status: "Conditional angular-stage simulation diagnostic; not the complete broadband ObsReq 15 metric."
+
+  abi_adm_proxy_between_day:
+    quantity: "Between-day spread of fitted ABI ADM parameters and normalized angular profiles"
+    units: "dimensionless parameter; relative profile spread in percent"
+    statistic: "Sample standard deviation across daily scene-average ADM fits"
+    requirement_ids: [ObsReq_12, ObsReq_15, ObsReq_17]
+    source: "GOES-16/18 ABI fitted ADM products"
+    derivation: "Stratify fitted scene/channel ADM summaries by day; no per-pixel fit covariance is retained"
+    domain: "ABI channel responses, two fixed views, configured proxy scene classes"
+    aggregation_scale: "Between-day scene-average proxy summary"
+    correlation_behavior: "Keep separate from Sunny/ECO-channel terms unless scene, channel, geometry, and covariance transfer is justified."
+    evidence_status: "Empirical proxy evidence; not a direct ECO flux uncertainty."
+
+unquantified_terms:
+  radiance_noise_and_calibration:
+    stage: Radiances
+    quantity: "ECO channel radiometric noise and calibration uncertainty"
+    units: "K and radiance units; output flux impact not estimated"
+    requirement_ids: [MeasReq_8, MeasReq_9, ObsReq_15]
+    source: "RfMA Table 4.1, p.43; RfMA §4.3.3, p.43"
+    next_input: "Per-channel noise covariance, absolute calibration covariance, and their spectral/scene dependence."
+  scene_id_cth_parallax_coregistration:
+    stage: "Scene identification / co-registration"
+    quantity: "Scene classification, cloud-top-height/parallax, and inter-view registration error"
+    units: null
+    requirement_ids: [ObsReq_17, ObsReq_15]
+    source: "RfMA §4.2.2, p.40"
+    next_input: "Representative truth labels, CTH error distributions, view geometry, and flux impact from wrong-scene/wrong-pixel assignment."
+  adm_population_and_model_form:
+    stage: "ADM angular conversion"
+    quantity: "ECO ADM population, model-form, and view-geometry uncertainty"
+    units: percent
+    requirement_ids: [ObsReq_12, ObsReq_15, ObsReq_17]
+    source: "RfMA §4.2.2, pp.38,40"
+    next_input: "Representative N=1..20 angular/noise cases, scene population, within-scene pixel spread, fallback behavior, and model-form comparison."
+  temporal_coincidence:
+    stage: "Scene identification / co-registration"
+    quantity: "Flux error from non-simultaneous multi-angle observations and scene evolution"
+    units: null
+    requirement_ids: [ObsReq_12, MeasReq_3]
+    source: "RfMA §4.2.2, p.38; RfMA §4.3.1, p.41"
+    next_input: "Time-tagged multi-view sequence and scene-dependent temporal decorrelation model."
+  narrowband_srf_and_reference_domain:
+    stage: "N2BC application"
+    quantity: "N2BC coefficient, assumed SRF, and 2.5-500 um versus 4-100 um reference-domain uncertainty"
+    units: percent
+    requirement_ids: [ObsReq_8, ObsReq_16]
+    source: "RfMA §4.2.2, pp.36,39; RfMA §6.2.1"
+    next_input: "Measured/validated flight SRFs, consistent 4-100 um reference integration, and independent spectral validation."
+  broadband_wfov_anchoring:
+    stage: "Broadband flux"
+    quantity: "Scene-dependent camera-to-WFOV integral cross-calibration residual"
+    units: null
+    requirement_ids: [ObsReq_14, MeasReq_9]
+    source: "RfMA §4.2.2, p.38; RfMA §6.6, p.71; RfMA §4.3.3, p.43"
+    next_input: "WFOV/camera matchup residuals and their scene/geometry-dependent covariance."
+  channel_and_shared_source_covariance:
+    stage: "Narrowband fluxes / N2BC application"
+    quantity: "Cross-channel and shared radiance/ADM/N2BC source covariance"
+    units: "percent squared"
+    requirement_ids: [ObsReq_10, ObsReq_15, ObsReq_16, MeasReq_8]
+    source: "RfMA §4.2.2, pp.37,39; RfMA Table 4.1, p.43"
+    next_input: "Matched per-scene channel residual vectors and instrument/algorithm covariance across shared sources."
+  aggregation_sampling_covariance:
+    stage: Aggregation
+    quantity: "Spatial/temporal sampling, representativeness, and correlated-error effect on monthly/seasonal OLR"
+    units: percent and W m-2
+    requirement_ids: [ObsReq_8, ObsReq_9, ObsReq_10, ObsReq_11]
+    source: "RfMA §4.2.2, pp.36-37"
+    next_input: "Mission sampling simulation, aggregation masks/weights, and spatial/temporal covariance; do not assume 1/sqrt(N)."
+  olr_stability:
+    stage: Aggregation
+    quantity: "Long-term OLR product stability"
+    units: percent
+    requirement_ids: [ObsReq_11, MeasReq_7]
+    source: "RfMA §4.2.2, p.37; RfMA §4.3.2, p.42"
+    next_input: "Instrument drift, calibration transfer, and time-series stability characterization."
+  independent_validation:
+    stage: "Broadband flux / aggregation"
+    quantity: "Independent absolute validation of instantaneous and aggregated broadband OLR"
+    units: percent and W m-2
+    requirement_ids: [ObsReq_10, ObsReq_15]
+    source: "RfMA §4.2.2, pp.37,39"
+    next_input: "CERES or other suitable independent matchup data with footprint, time, and angular sampling treatment."
+
 evidence_mappings:
   abi_adm_proxy_variability:
     source: "GOES-16/GOES-18 ABI ADM products produced by fit_ADM.py"
