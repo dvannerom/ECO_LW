@@ -1,0 +1,50 @@
+schema_version: 1
+abi_mode: full
+output_dir: data/uncertainty/nominal_full
+diagnostic_dir: data/diagnostics/nominal_full
+figure_dir: figures/uncertainty/nominal_full
+diagnostic_figure_dir: figures/diagnostics/nominal_full
+training_days: [245, 247, 249, 250, 251, 254, 255, 256, 257, 258, 261, 262, 263, 264, 266, 268, 269, 270, 273, 274]
+validation_days: [246, 252, 259, 265, 271]
+cache_root: data/uncertainty_runs/nominal_full/features
+chunk_rows: 32
+batch_points: 65536
+netcdf_chunk_cache_mb: 128
+gmm_workers: 8
+gmm_chunk_points: 65536
+stability_max_points: 250000
+stability_repeats: 3
+stability_seed: 42
+maximum_vza_deg: 70
+gmm_initializations: 2
+gmm_max_iter: 300
+gmm_tol: 0.001
+components: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+nominal_components: 6
+seeds: [42, 73, 109]
+folds: 5
+noise_realizations: 30
+noise_seed: 42
+scenario: rfma_goal_6
+reference_domain_um: [4, 100]
+angles_deg: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
+nedt_k_at_255: 0.4
+product_resolution_km: 10
+spatial:
+  native_resolution_km: 2
+  block_sizes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  nominal_block_size: 5
+  independent_of_other_sources: true
+scope: >-
+  All eligible native ABI two-satellite overlap pixels across 20 held-in and
+  five held-out days, with no geographic or fitting sampling. Full-population
+  scaler/PCA/GMM EM and paired-ratio positive scene ADMs; all held-out pixels
+  enter population and added-noise transitions. Spatial footprints align to
+  the disk grid with no chunk-boundary loss. Native spectral validity and
+  VZA <=70 degrees define eligibility, not historical texture/tile screening.
+  Component reliability uses production-style bootstrap refits on a bounded
+  per-day training sample; it is separate from full-data fitting and is not a
+  full-population robustness estimate.
+  Grouped held-out Sunny columns use ABI taxonomy and ECO goal SRFs for
+  physical retrieval. ABI assignment/spatial transfer to ECO and spatial
+  independence remain explicit hypotheses, not full ECO mission uncertainty.

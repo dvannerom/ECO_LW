@@ -1,6 +1,7 @@
 """Small end-to-end validation of grouped source decomposition and plot output."""
 
 import importlib.util
+import csv
 import json
 from pathlib import Path
 
@@ -86,14 +87,22 @@ def test_grouped_budget_closure_and_models(tmp_path, monkeypatch):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.plot(report)
+    diagnostic_csv = Path(options["diagnostic_dir"])/"gmm_component_diagnostics.csv"
+    diagnostic_csv.parent.mkdir(parents=True, exist_ok=True)
+    with diagnostic_csv.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("n_components", "ari_min", "ari_std"))
+        writer.writeheader()
+        writer.writerows([
+            {"n_components": k, "ari_min": .9, "ari_std": .02} for k in (4, 6, 8)
+        ])
     module.plot_gmm_diagnostics({
         "components": 6,
         "candidates": [{"components": k, "seed": seed, "heldout_mean_log_likelihood": -1/k,
                         "heldout_day_log_likelihood": [-1/k, -.5/k], "minimum_occupancy": .05}
                        for k in (4, 6, 8) for seed in (42, 73)],
-    }, options)
+    }, diagnostic_csv, options)
     assert (Path(options["figure_dir"])/"eco_uncertainty_numerical_budget.png").stat().st_size > 1000
-    assert (Path(options["diagnostic_figure_dir"])/"gmm_seed_variability.png").stat().st_size > 1000
+    assert (Path(options["diagnostic_figure_dir"])/"gmm_stability.png").stat().st_size > 1000
     assert (Path(options["diagnostic_figure_dir"])/"spatial_processing.png").stat().st_size > 1000
     assert (output/"numerical_budget.csv").exists()
 
@@ -181,9 +190,12 @@ def test_spatial_tile_crops_edges_and_aligns_to_full_grid():
     np.testing.assert_allclose(result, expected[1:])
 
 
-def test_noise_assignment_uses_heldout_abi_radiance(tmp_path, monkeypatch):
+@pytest.mark.parametrize("dim_pixel", [False, True])
+def test_noise_assignment_uses_heldout_abi_radiance(tmp_path, monkeypatch, dim_pixel):
     planck = np.broadcast_to([200000., 1300., 0., 1.], (2, 6, 4)).copy()
     bt = np.where(np.indices((5, 5))[0] < 2, 249.9, 250.1)
+    if dim_pixel:
+        bt[0, 0] = 100.
     radiance = np.repeat((200000./np.expm1(1300./bt))[..., None], 9, axis=2)
     source_path = tmp_path/"abi.nc"
     with Dataset(source_path, "w") as source:
@@ -213,6 +225,7 @@ def test_noise_assignment_uses_heldout_abi_radiance(tmp_path, monkeypatch):
     settings["nedt_k_at_255"] = .4
     runner.assignment(settings)
     report = json.loads((tmp_path/"abi_assignment.json").read_text())
+    assert report["noise_model"] == "mean_preserving_lognormal"
     assert report["sample_pixels"] == 25
     assert 0 < report["weighted_change_probability"] < 1
     assert np.asarray(report["transition_counts"]).sum() == 25*30

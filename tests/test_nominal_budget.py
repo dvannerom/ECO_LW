@@ -5,9 +5,43 @@ import pytest
 
 from nominal_budget import (
     integrate_domain, file_scene, population_weights, fit_pooled_shape, library_flux, error_classes,
-    independent_budget_sum,
+    independent_budget_sum, lognormal_radiance,
 )
 from sensitivity import angular_basis, angular_integral
+
+
+def test_lognormal_positive_moment_matching_and_zero_noise():
+    radiance = np.array([100., 1., .01])
+    sd = np.array([.4, 1., .02])
+    draws = np.random.default_rng(42).normal(size=(400000, 3))
+    perturbed = lognormal_radiance(radiance, sd, draws)
+    assert np.all(np.isfinite(perturbed) & (perturbed > 0))
+    np.testing.assert_allclose(perturbed.mean(axis=0), radiance, rtol=.015)
+    np.testing.assert_allclose(perturbed.std(axis=0), sd, rtol=.05)
+    np.testing.assert_array_equal(lognormal_radiance(radiance, 0., draws),
+                                  np.broadcast_to(radiance, draws.shape))
+    # A draw that makes additive Gaussian radiance negative remains positive.
+    assert 1. + 2. * -3. < 0
+    assert lognormal_radiance(np.array([1.]), 2., np.array([-3.]))[0] > 0
+    # At high SNR, the original additive Gaussian behavior is recovered.
+    z = np.array([-2., 0., 2.])
+    np.testing.assert_allclose(lognormal_radiance(100., .001, z), 100. + .001*z,
+                               atol=2e-8, rtol=0)
+
+
+@pytest.mark.parametrize("radiance,sd,draw", [
+    (0., 1., 0.), (-1., 1., 0.), (np.nan, 1., 0.),
+    (1., -1., 0.), (1., np.inf, 0.), (1., 1., np.nan),
+])
+def test_lognormal_invalid_inputs(radiance, sd, draw):
+    with pytest.raises(ValueError, match="Lognormal noise requires"):
+        lognormal_radiance(radiance, sd, draw)
+
+
+@pytest.mark.parametrize("draw", [-1e6, 1e6])
+def test_lognormal_numerical_range_fails_without_clipping(draw):
+    with pytest.raises(ValueError, match="overflowed or underflowed"):
+        lognormal_radiance(1., 1., draw)
 
 
 def test_exact_domain_boundaries():

@@ -392,6 +392,168 @@ snakemake uncertainty_nominal_budget \
     --resources mem_mb=4096
 ```
 
+#### Full-data and fast-test profiles
+
+The command above preserves the historical sampled configuration. Select a
+different nominal settings file explicitly; profiles have separate caches,
+reports, models and figures, so the smoke run cannot overwrite a full budget.
+
+**Full data: all 25 available days, no ABI fitting/evaluation sampling**
+
+```bash
+conda activate tf-gpu
+snakemake uncertainty_nominal_budget \
+    -s workflow/Snakefile --configfile config.yaml \
+    --config nominal_budget_settings=config/nominal_budget_full.yaml \
+    --cores 48 --resources mem_mb=98304 nominal_io=4 \
+    --rerun-incomplete
+```
+
+Use `--dry-run` first to inspect the jobs. The full profile in
+[nominal_budget_full.yaml](config/nominal_budget_full.yaml) uses the existing
+20-day production training split and held-out days **246/252/259/265/271**.
+It checks that these disjoint sets partition all days in the main configuration.
+The output table is
+`data/uncertainty/nominal_full/numerical_budget.csv`, with its figure at
+`figures/uncertainty/nominal_full/eco_uncertainty_numerical_budget.png`.
+All 25 native 2 km preprocessed files are workflow dependencies.
+Day feature preparation and each component-count/seed/initialization GMM fit
+are separate Snakemake jobs; a short candidate-aggregation job selects the
+highest-likelihood converged start. EM workers report likelihood progress every
+10 iterations and at convergence. A resumed run reuses completed caches and
+initialization fits only while their code/configuration/input provenance remains
+current.
+
+The full profile also exposes candidate scoring (count/seed), noise assignment
+(held-out day), spatial assessment (held-out day/block size), and diagnostics
+(component count) as separate jobs, followed by deterministic aggregation.
+Assignment keeps all 30 realization streams together within each day, preserving
+the original seeds and native pixel order without rereading a day 30 times.
+Each count's positive scene ADM is fitted once; the nominal-count library is
+shared by spatial assessment and diagnostics.
+
+Performance controls in the full settings are:
+
+- `gmm_workers: 8`: maximum processes per initialization, declared as Snakemake
+  `threads`. Snakemake scales this down when fewer cores are available; the CLI
+  receives the actual allocation through `--workers`. Each process uses one
+  BLAS thread. Work and centered-moment reductions are bounded and merged in
+  input order; component occupancy is checked globally, not per worker shard.
+- `gmm_chunk_points: 65536`: bounded internal EM chunks, independent of the
+  native ABI `chunk_rows`. RAM scales with worker count and chunk size, not the
+  full population. Independent starts still use the original random seeds.
+- `netcdf_chunk_cache_mb: 128`: per-variable compressed-chunk cache for the four
+  radiance and two angle variables. This avoids repeated decompression with
+  32-row processing slabs, without changing eligibility or footprint geometry.
+  The six caches have up to 768 MiB combined capacity per reader; the workflow
+  requests 3072 MiB for these reader jobs.
+
+Full-data scaler/PCA moments are computed once and float64 transformed training
+features are persisted under `output_dir/training_pca`. Every EM pass still
+uses every training pixel. Disk storage is `8 * N * d` bytes, approximately
+8.7 GiB for 291 million pixels and four retained dimensions, in addition to
+the raw feature cache. Writes and reads remain chunked/memory-mapped.
+Likelihood and labels share one Gaussian evaluation; ADM channel reductions
+use weighted `bincount` rather than unbuffered repeated-index updates.
+
+The command above is an **example allocation**, not a request to occupy a whole
+shared node: choose cores and memory within your scheduler allocation.
+`nominal_io=4` caps concurrent native-NetCDF reader jobs at four; tune this
+separately from compute concurrency to avoid filesystem/decompression
+contention. EM jobs request `1024 + 384 * threads` MiB. For a one-process
+reference run, add `--set-threads fit_nominal_full_initialization=1`.
+
+On a bounded actual-data benchmark (524,280 rows across all 20 training days,
+15 components, four retained dimensions), the implemented persistent-process
+EM kernel took 0.620 s with one worker, 0.194 s with four, and 0.143 s with
+eight after startup. Statistics were identical in that test. Process startup
+took roughly 1.5-1.6 s for the parallel first pass, so pools are reused across
+iterations. These are kernel measurements, not a promised full-run speedup.
+
+These optimizations do not change the population, physics, covariance model,
+noise realization count, convergence tolerance, or manual component choice.
+NetCDF caching returns identical values. Parallel and larger-chunk moment
+reductions can change floating-point roundoff, convergence iteration, or
+near-tied labels/model selection; numerical equivalence is tested, not bitwise
+identity of every complete scientific run. Do not edit code/configuration
+while a run is active. Upgrading from the previous implementation invalidates
+strict provenance: expect caches and fits to rebuild, rather than bypassing
+checks or relabelling old outputs as current.
+
+Full mode visits every native grid pixel in row chunks. Eligibility requires
+finite positive raw/corrected six-channel radiances, physical Planck-derived
+BTs and both corrected VZAs in 0-70 degrees; the inherited corrected-radiance
+upper bound of 1000 is retained. It does **not** apply historical texture,
+tile acceptance, or complete-10-km-block filters to native classifier inputs.
+Consequently its population is not just an expansion of the historical tile
+sample: it also removes those historical cache eligibility restrictions.
+
+Every eligible held-in pixel contributes to scaler/PCA moments and every
+full-covariance GMM EM iteration. A bounded random set initializes the fit
+only; it is not a fitting reservoir. All eligible training pairs enter the
+positive-hemisphere, paired-ratio scene-ADM objective. Every eligible held-out
+pixel enters population counts and each added-noise transition experiment.
+The full held-out density percentile uses a disk-backed in-place partition.
+Spatial passes align chunks to each footprint size independently, retain all
+complete eligible footprints, and exclude only incomplete disk-grid edges,
+not chunk edges. Added-noise streams follow day/realization and native pixel
+order, independently of chunk size.
+
+Full-mode component diagnostics retain likelihood/ICL, physical ADM scores,
+angular coverage and exact ABI cubic-flux impact using all eligible records.
+The reliability panel now uses the same **bootstrap assignment-stability**
+metric as the production diagnostic: a bounded, per-training-day sample is
+split 80/20, then three bootstrap refits are compared with the sample baseline
+on its fixed held-out fifth. The diagnostic refits are separate from the
+full-population nominal models; this estimates fitting-sample sensitivity, not
+full-population robustness or classification accuracy. The
+`stability_max_points`, `stability_repeats` and `stability_seed` settings
+control its 250,000-point cap, three refits and reproducibility by default.
+The full-mode ADM scorer uses the same positive paired-ratio fit as its
+spatial stage, and per-day Planck coefficients throughout. Component choice
+remains manual.
+
+**Fast partial smoke test**
+
+```bash
+snakemake uncertainty_nominal_budget \
+    -s workflow/Snakefile --configfile config.yaml \
+    --config nominal_budget_settings=config/nominal_budget_fast.yaml \
+    --cores 2 --resources mem_mb=4096
+```
+
+[nominal_budget_fast.yaml](config/nominal_budget_fast.yaml) uses two held-in
+and two held-out days, four existing sampled tiles/day, 5000-row reservoirs,
+six components, seed 73, two noise realizations and identity/10 km spatial
+checks. The full Sunny library and five grouped folds remain to exercise the
+complete join. Seed 73 is retained because this small fitting pool supports
+all six Sunny scenes in every training fold; the small scene populations are
+not production representativeness evidence. The target completed in about
+32 seconds on the current machine with existing convergence caches.
+Missing caches are generated by the convergence preparation rules, which
+still prepare their original 192-tile pools, so a cold-cache run costs more.
+Its table is `data/uncertainty/nominal_fast/numerical_budget.csv`; it is for
+execution checks, **not a usable uncertainty estimate**.
+
+The original [nominal_budget.yaml](config/nominal_budget.yaml) remains available
+as the default historical eight-day/192-tile/50,000-row profile.
+The script also accepts `--settings` and `--config` for individual stages.
+
+**Compute and storage:** full-mode working arrays scale with
+`chunk_rows * grid_width` or `batch_points`, not the number of days/pixels.
+GMM sufficient statistics scale with components times squared PCA dimension.
+Each EM iteration is approximately O(N K D^2), repeated for every configured
+component count, seed and initialization; this is an expensive full-data
+assessment, not a 32-second run. The feature cache uses **40 bytes per eligible
+native pixel** (ten float32 features). ADM fitting temporarily uses another
+**36 bytes per held-in pixel per concurrently running fitting job**; the
+spatial and diagnostic jobs have separate scratch files. The exact held-out
+density percentile temporarily uses eight bytes per held-out pixel.
+Reserve disk space accordingly. Spatial residual storage in full mode contains
+`block_sizes`, `count`, `mean`, `m2` sufficient statistics rather than individual
+footprint residuals; Sunny paired residual products remain unchanged.
+`--resources mem_mb` controls Snakemake concurrency, not a process memory limit.
+
 [nominal_budget.yaml](config/nominal_budget.yaml) specifies instantaneous
 4-100 um broadband OLR, RfMA goal channels, fifteen 0-70 degree views, the
 original repository modified-log angular basis, and a 10 km **product target**.
@@ -430,21 +592,30 @@ component count. It uses 50,000
 training rows from days 245/247/254/261 and 50,000 validation rows from
 246/252/259/271, sampled from the existing 192-tile/day eligible overlap
 caches. Candidate counts 2 through 15 inclusive use three seeds and two initializations.
-The best held-out initialization at the configured count is used;
-initialization agreement is reported using adjusted Rand scores. The one-SE
+The best held-out initialization at the configured count is used; seed
+variability is supplementary. The one-SE
 likelihood recommendation is diagnostic only and never overrides the count.
 Inspect `figures/diagnostics/nominal/gmm_diagnostics.png` for this texture-free
 classifier, then edit `nominal_components` manually. The historical production
 `figures/diagnostics/gmm/production` describes a different feature/model configuration.
-The four panels reuse `find_nComponents.py` scoring and
-`plot_n_components.py`: likelihood/ICL, bootstrap reliability, physical ADM
-quality, and angular coverage/exact production flux impact. The diagnostic
-CSV is `data/diagnostics/nominal/gmm_component_diagnostics.csv`; all tested
-counts receive the exact stage and a criteria heatmap. Diagnostic fits use
-the existing five-initialization fitter and three bootstrap refits, separately
-from the nominal two-initialization models. The original nine-bin angular
-coverage metric is preserved despite the cached population's <=70 degree
-eligibility. Seed variability is supplementary in `gmm_seed_variability.png`.
+The production and nominal workflows use the same five-initialization
+diagnostic fit, 80/20 diagnostic train/test split, bootstrap-refit ARI
+calculation, four-panel plotting function, and diagnostic metric definitions.
+Thus the plots and metric meanings match; numerical results are not expected
+to match because production uses texture features and a sampled population,
+while nominal uses spectral-only features and its profile's diagnostic sample.
+Nominal's full-profile ADM/flux scores additionally use all eligible pixels
+and the positive paired-ratio ADM fit. The four panels show likelihood/ICL,
+bootstrap reliability, physical ADM quality, and angular coverage/exact
+production flux impact. The diagnostic CSV is
+`data/diagnostics/nominal/gmm_component_diagnostics.csv`; all tested counts
+receive the exact stage and a criteria heatmap. Seed-specific held-out
+likelihood and occupancy are grouped with bootstrap ARI in `gmm_stability.png`;
+the four-panel physical/selection diagnostic remains separate. Diagnostic fits
+use the existing five-initialization fitter and three bootstrap refits,
+separately from the nominal two-initialization models. The original nine-bin
+angular coverage metric is preserved despite the cached population's <=70
+degree eligibility.
 The same validation days are used for initialization selection and cannot
 certify independent classification accuracy.
 
@@ -500,14 +671,43 @@ Zero random columns for deterministic spectral/angular experiments do not
 include unestimated training/library variability.
 
 Assignment-change probabilities are measured on 50,000 uniformly sampled
-eligible **held-out ABI pixels**, not on Sunny spectra. The baseline-trained
+eligible **held-out ABI pixels** in sampled mode, or every eligible held-out
+pixel in full mode, not on Sunny spectra. The baseline-trained
 GMM remains fixed. Observed ABI is treated as truth despite existing instrument
-noise. Extra independent Gaussian noise is added to uncorrected radiances
-using each satellite's Planck derivative at 255 K times 0.4 K; BT and the
+noise. Since 2026-10-07, both modes perturb uncorrected radiances with
+independent **mean-preserving lognormal noise**, replacing additive Gaussian
+noise that could make dim-channel radiances non-positive. The radiance SD
+still uses each satellite's Planck derivative at 255 K times 0.4 K; BT and the
 mean-G16/G18 spectral features are recomputed for 30 realizations. Noise is
 independent across channels, satellites and pixels; averaging the two satellite
 BTs changes the effective feature noise. `abi_assignment.json` contains counts,
-scene-conditional probabilities and per-day transition counts.
+scene-conditional probabilities, per-day transition counts, and
+`noise_model: mean_preserving_lognormal`.
+
+For clean radiance $L>0$, radiance-space SD $\sigma_L$, and independent
+$Z\sim N(0,1)$, the implementation uses:
+
+$$
+v=\ln(1+(\sigma_L/L)^2),\qquad
+L'=\exp(\ln L+\sqrt{v}Z-v/2).
+$$
+
+Thus $E[L']=L$ and $\operatorname{Var}(L')=\sigma_L^2$, with strictly positive
+radiance mathematically. Zero SD returns the clean radiance exactly. At high
+signal-to-noise ratio this approaches additive Gaussian noise; dim channels
+have asymmetric, right-tailed perturbations. This distribution is an explicit
+modelling assumption, not an RfMA-specified or instrument-validated noise law.
+No clipping, rejection sampling, or pixel exclusion is applied. Floating-point
+overflow/underflow and invalid BTs still fail explicitly. Log-space evaluation
+avoids squaring a potentially overflowing relative SD. Work is linear in
+pixel/channel count per realization, with temporary arrays bounded by the
+current chunk in full mode. Existing day/realization RNG streams retain
+chunk-size invariance.
+
+The separate ECO/Sunny radiometric-noise experiment remains Gaussian.
+Previously reported assignment/budget numbers below used the former Gaussian
+ABI scenario; rerun assignment and downstream budget products before treating
+them as lognormal results.
 
 Sunny is used only to translate these probabilities into broadband error:
 each clean file label samples the ABI conditional destination distribution,

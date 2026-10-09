@@ -13,6 +13,27 @@ Each entry is tagged:
 
 Keep this file updated whenever new mission information arrives.
 
+## ABI nominal assignment noise update
+
+- [user 2026-10-07] Replace additive Gaussian noise with mean-preserving
+  lognormal radiance noise in the nominal ABI assignment assessment, and
+  document the change.
+- [derived 2026-10-07] Sampled and full ABI assignment now use
+  `L'=exp(log(L)+sqrt(v)*Z-v/2)`, with
+  `v=log(1+(sigma_L/L)^2)` and independent standard-normal `Z`.
+  This preserves clean-radiance mean and the existing radiance-space variance;
+  `sigma_L` remains NEdT times the satellite/channel Planck derivative at 255 K.
+  Positive clean radiances remain mathematically positive without clipping or
+  rejecting draws. Zero SD is an exact identity; numerical range failures and
+  invalid BTs remain explicit errors.
+- [assumed 2026-10-07] Lognormal skewness, particularly its positive tail for
+  dim channels, is a positivity-preserving modelling choice, not an
+  instrument-validated distribution or an RfMA requirement. This update
+  neither removes existing ABI noise nor establishes the ABI-to-ECO transfer.
+  The separate ECO/Sunny radiometric-noise model remains Gaussian. Earlier
+  Gaussian ABI assignment and propagated budget scores must be regenerated
+  before being interpreted as lognormal-scenario evidence.
+
 ## 0. Source document
 
 - ESA (2026), *Report for Mission Assessment: Earth Explorer 12 Candidate
@@ -583,6 +604,33 @@ included under assumed ECO response transfer, and the independent spatial proxy.
 Its combined RMSE is 1.9930 W/m2; the paired Sunny subtotal is 1.9560 W/m2.
 See the [current README summary](../README.md#current-uncertainty-status-2026-10-06).
 Earlier excluded-assignment and 1.931 W/m2 results are not the current budget.
+
+- [user 2026-10-06] The full nominal-budget run must use all 25 available ABI
+  days, split between held-in and held-out observations. ABI chunking is only
+  for computational efficiency, not sampling. Keep a fastest partial-data
+  test profile alongside the full-data profile.
+- [derived 2026-10-06] Full-data execution configuration retains the existing
+  20-day production training split and its five-day complement
+  246/252/259/265/271 for evaluation. Native spectral/radiometric eligibility
+  and two-satellite VZA <=70 degrees replace inherited sampled-cache
+  texture/tile screening. All eligible records enter scaler/PCA/GMM EM,
+  ABI scene-ADM fitting, held-out population counts and noise transitions;
+  every complete eligible grid-aligned spatial footprint is assessed without
+  chunk-boundary loss. Full-mode reliability diagnostics are explicitly
+  initialization ARI rather than the sampled mode's bootstrap ARI. This is
+  a new execution scope, not a new validated numerical mission budget; ABI
+  transfer, Sunny representativeness, spatial independence and ECO optical
+  response limitations remain.
+- [user 2026-10-08] Implement full nominal-workflow performance improvements
+  without intentionally changing the physics or statistical experiment.
+- [derived 2026-10-08] Optimized full execution shares float64 scaler/PCA
+  preprocessing and nominal scene ADMs, uses bounded resource-aware parallel
+  EM and independent stage jobs, and enlarges compressed-NetCDF chunk caches.
+  Full-population eligibility, random streams, footprint alignment, covariance
+  model, convergence tolerance and manual component choice are retained.
+  Reduction-order roundoff may affect convergence or near-tied assignments;
+  numerical equivalence is tested, not bitwise-identical complete mission
+  budgets. This is an execution change, not new uncertainty evidence.
 
 - [user 2026-10-06] Expand nominal four-panel GMM diagnostics to every
   component count 2 through 15 inclusive. Spatial diagnostics must contain

@@ -18,9 +18,13 @@ from uncertainty import check_provenance
 from plot_n_components import plot_n_components
 
 
-def plot_gmm_diagnostics(selection, settings):
-    """Display all candidate counts without automatically choosing the nominal."""
-    figure, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+def plot_gmm_diagnostics(selection, diagnostics_csv, settings):
+    """Combine per-seed score variation and bootstrap stability by component count."""
+    with Path(diagnostics_csv).open(newline="") as handle:
+        diagnostic_rows = {
+            int(row["n_components"]): row for row in csv.DictReader(handle)
+        }
+    figure, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
     rows = selection["candidates"]
     for seed in sorted({row["seed"] for row in rows}):
         candidates = sorted((row for row in rows if row["seed"] == seed),
@@ -39,8 +43,21 @@ def plot_gmm_diagnostics(selection, settings):
         axis.legend()
     axes[0].set_ylabel("Held-out mean log likelihood (day-based SE)")
     axes[1].set_ylabel("Minimum held-out component population (%)")
-    figure.suptitle("Spectral-only ABI classifier: diagnostics for manual component choice")
-    figure.savefig(Path(settings["diagnostic_figure_dir"])/"gmm_seed_variability.png", dpi=160)
+    counts = sorted(diagnostic_rows)
+    ari_min = [float(diagnostic_rows[count]["ari_min"]) for count in counts]
+    ari_std = [float(diagnostic_rows[count]["ari_std"]) for count in counts]
+    axes[2].errorbar(counts, ari_min, yerr=ari_std, marker="o", capsize=4,
+                     color="tab:purple")
+    axes[2].axvline(selection["components"], color="black", linestyle="--",
+                    label=f"Manual nominal: {selection['components']}")
+    axes[2].set_xlabel("Number of GMM components")
+    axes[2].set_ylabel("Minimum bootstrap ARI (error bars: repeat SD)")
+    axes[2].set_ylim(-0.05, 1.05)
+    axes[2].legend()
+    figure.suptitle(
+        "Spectral-only ABI classifier: seed variability and bootstrap stability"
+    )
+    figure.savefig(Path(settings["diagnostic_figure_dir"])/"gmm_stability.png", dpi=160)
     plt.close(figure)
 
 
@@ -160,13 +177,16 @@ def main():
     freshness = check_provenance(selection["provenance"], ROOT)
     if freshness["status"] != "current":
         raise ValueError(f"Stale GMM diagnostics: {freshness}")
-    plot_gmm_diagnostics(selection, report["settings"])
     diagnostic_csv = Path(report["settings"]["diagnostic_dir"])/"gmm_component_diagnostics.csv"
     metadata = json.loads(Path(str(diagnostic_csv)+".json").read_text())
     freshness = check_provenance(metadata["provenance"], ROOT)
     if freshness["status"] != "current":
         raise ValueError(f"Stale four-panel GMM diagnostics: {freshness}")
-    plot_n_components(diagnostic_csv, Path(report["settings"]["diagnostic_figure_dir"])/"gmm_diagnostics.png")
+    plot_gmm_diagnostics(selection, diagnostic_csv, report["settings"])
+    plot_n_components(
+        diagnostic_csv,
+        Path(report["settings"]["diagnostic_figure_dir"]) / "gmm_diagnostics.png",
+    )
 
 
 if __name__ == "__main__":

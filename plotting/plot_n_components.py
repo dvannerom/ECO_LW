@@ -19,7 +19,11 @@ def _is_true(row, name):
 	return row[name].strip().lower() in {"true", "1", "yes"}
 
 
-def plot_n_components(input_csv, output_plot=None):
+def plot_n_components(
+    input_csv,
+    output_plot=None,
+    reliability_label="Bootstrap assignment stability",
+):
 	"""Create diagnostic plots from a CSV written by find_nComponents.py."""
 	input_csv = Path(input_csv)
 	with input_csv.open(newline="") as handle:
@@ -54,7 +58,7 @@ def plot_n_components(input_csv, output_plot=None):
 	ari_min = [_number(row, "ari_min") for row in rows]
 	ari_std = [_number(row, "ari_std") for row in rows]
 	axis.errorbar(counts, ari_min, yerr=ari_std, marker="o", capsize=4, label="ARI minimum +/- 1 std")
-	axis.set_title("Cluster reliability")
+	axis.set_title(reliability_label)
 	axis.set_ylabel("Adjusted Rand index")
 	axis.grid(True, alpha=0.3)
 	axis.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=2, fontsize="x-small")

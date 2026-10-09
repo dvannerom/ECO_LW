@@ -7,6 +7,35 @@ from scipy.optimize import minimize_scalar
 from sensitivity import angular_basis, angular_integral
 
 
+def lognormal_radiance(radiance, noise_sd, standard_normal):
+    """Perturb positive radiance with matching mean and radiance-space SD.
+
+    Inputs broadcast to radiance[n,2,6] in native ABI radiance units; noise_sd
+    has the same units and standard_normal contains independent N(0,1) draws.
+    With v=log(1+(noise_sd/radiance)**2), log(L')=log(L)+sqrt(v)*Z-v/2.
+    Work and temporary storage are linear in the current chunk, not the disk.
+    """
+    radiance = np.asarray(radiance, dtype=np.float64)
+    noise_sd = np.asarray(noise_sd, dtype=np.float64)
+    standard_normal = np.asarray(standard_normal, dtype=np.float64)
+    if (np.any(~np.isfinite(radiance)) or np.any(radiance <= 0)
+            or np.any(~np.isfinite(noise_sd)) or np.any(noise_sd < 0)
+            or np.any(~np.isfinite(standard_normal))):
+        raise ValueError("Lognormal noise requires positive finite radiance, nonnegative finite SD and finite draws")
+    log_radiance = np.log(radiance)
+    log_sd = np.full(noise_sd.shape, -np.inf)
+    np.log(noise_sd, out=log_sd, where=noise_sd > 0)
+    # Log-space evaluation avoids overflow when the relative noise is large.
+    variance = np.logaddexp(0., 2 * (log_sd - log_radiance))
+    with np.errstate(over="ignore", under="ignore"):
+        perturbed = np.asarray(np.exp(
+            log_radiance + np.sqrt(variance) * standard_normal - variance / 2))
+    np.copyto(perturbed, radiance, where=variance == 0)
+    if np.any(~np.isfinite(perturbed)) or np.any(perturbed <= 0):
+        raise ValueError("Lognormal radiance overflowed or underflowed; no clipping was applied")
+    return perturbed
+
+
 def integrate_domain(wavelength, values, lower, upper):
     """Integrate spectral flux in an exact bounded domain with interpolated edges."""
     wavelength, values = np.asarray(wavelength), np.asarray(values)

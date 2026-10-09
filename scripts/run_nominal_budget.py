@@ -29,7 +29,7 @@ from eco_spectral_response import load_channel_scenarios, channel_response_matri
 from geometry_sensitivity import retrieve_geometry
 from nominal_budget import (
     integrate_domain, file_scene, population_weights, fit_pooled_shape, library_flux, error_classes,
-    independent_budget_sum,
+    independent_budget_sum, lognormal_radiance,
 )
 from run_sensitivity_convergence import collect_training, open_cache
 from scene_features import spectral_features_from_bt, SPECTRAL_CHANNEL_INDICES
@@ -41,15 +41,25 @@ from find_nComponents import evaluate_candidate, evaluate_exact_candidate
 from uncertainty import build_provenance, check_provenance
 
 SETTINGS = ROOT/"config/nominal_budget.yaml"
+CONFIG_PATH = ROOT/"config.yaml"
 
 
 def options():
     with SETTINGS.open() as source:
         settings = yaml.safe_load(source)
-    with (ROOT/"config.yaml").open() as source:
+    with CONFIG_PATH.open() as source:
         config = yaml.safe_load(source)
     if settings["schema_version"] != 1 or settings["noise_realizations"] < 2:
         raise ValueError("Unsupported nominal budget settings")
+    training, validation = settings["training_days"], settings["validation_days"]
+    if (not training or len(validation) < 2 or set(training) & set(validation)
+            or len(set(training)) != len(training) or len(set(validation)) != len(validation)):
+        raise ValueError("Use unique disjoint training days and at least two validation days")
+    if settings.get("abi_mode", "sampled") not in ("sampled", "full"):
+        raise ValueError("abi_mode must be sampled or full")
+    if settings.get("abi_mode") == "full":
+        from nominal_streaming import validate_settings
+        validate_settings(settings, config)
     return settings, config
 
 
@@ -67,12 +77,14 @@ def provenance(inputs):
                     ROOT/"scripts/find_nComponents.py", ROOT/"scripts/average_resolution.py",
                     ROOT/"scripts/preprocess_data_ABI.py", ROOT/"src/broadband.py",
                     ROOT/"scripts/run_sensitivity_convergence.py",
+                    ROOT/"src/nominal_streaming.py", ROOT/"src/streaming_gmm.py",
+                    ROOT/"src/gmm_stability.py",
                     *[ROOT/f"src/{name}.py" for name in (
                         "abi_sunny_comparison", "eco_spectral_response", "sensitivity",
                         "scene_features", "radiometry", "uncertainty", "adm", "adm_fitting",
                         "spectral_response",
                     )]],
-        configuration_paths=[SETTINGS, ROOT/"config.yaml", ROOT/"config/eco_channel_scenarios.yaml"],
+        configuration_paths=[SETTINGS, CONFIG_PATH, ROOT/"config/eco_channel_scenarios.yaml"],
         input_paths={str(i): Path(path) for i, path in enumerate(inputs)},
     )
 
@@ -290,9 +302,10 @@ def spatial_tile(model, raw_radiance, radiance, angles, planck, library, coeffic
     fine[native] = abi_broadband(radiance[native], angles[native], planck, labels,
                                 library, "regularized", coefficients).mean(axis=1)
     reference = block_average_chunk(fine, block)[complete]
-    coarse_raw = block_average_chunk(raw_radiance, block)[complete]
-    coarse_rad = block_average_chunk(radiance, block)[complete]
-    coarse_angles = block_average_chunk(angles, block)[complete]
+    # Incomplete footprints are discarded; avoid averaging their masked NaNs.
+    coarse_raw = block_average_chunk(np.where(native[..., None, None], raw_radiance, 0), block)[complete]
+    coarse_rad = block_average_chunk(np.where(native[..., None, None], radiance, 0), block)[complete]
+    coarse_angles = block_average_chunk(np.where(native[..., None], angles, 0), block)[complete]
     coarse_labels = model.predict(abi_noise_features(coarse_raw, planck, 0))
     retrieved = abi_broadband(coarse_rad, coarse_angles, planck, coarse_labels,
                              library, "regularized", coefficients).mean(axis=1)
@@ -458,14 +471,12 @@ def assignment(settings):
     per_day = {str(day): np.zeros((k, k), dtype=np.int64) for day in settings["validation_days"]}
     for repetition in range(settings["noise_realizations"]):
         rng = np.random.default_rng(np.random.SeedSequence([settings["noise_seed"], repetition, 3]))
-        noise = rng.normal(size=records["radiance"].shape)*noise_sd
+        perturbed = lognormal_radiance(
+            records["radiance"], noise_sd, rng.normal(size=records["radiance"].shape))
         bt = np.empty_like(records["radiance"])
         for satellite in range(2):
-            perturbed = records["radiance"][:, satellite]+noise[:, satellite]
-            if np.any(perturbed <= 0) or np.any(~np.isfinite(perturbed)):
-                raise ValueError("ABI noise realization has invalid radiances")
             coefficients = np.moveaxis(records["planck"][:, satellite], -1, 0)
-            bt[:, satellite] = radiance_to_brightness_temperature(perturbed, coefficients)
+            bt[:, satellite] = radiance_to_brightness_temperature(perturbed[:, satellite], coefficients)
         features = spectral_features_from_bt(bt.mean(axis=1))
         if np.any(~np.isfinite(features)) or np.any(bt <= 0) or np.any(bt >= 1000):
             raise ValueError("ABI noise realization has invalid BT features")
@@ -486,9 +497,11 @@ def assignment(settings):
         "by_day_transition_counts": {day: value.tolist() for day, value in per_day.items()},
         "sample_pixels": len(labels), "noise_realizations": settings["noise_realizations"],
         "nedt_k_at_255": settings["nedt_k_at_255"],
+        "noise_model": "mean_preserving_lognormal",
         "assumptions": [
             "Observed ABI radiances treated as truth; existing ABI noise is not removed.",
-            "Fixed clean-trained GMM; independent Gaussian noise across satellites, channels and pixels.",
+            "Fixed clean-trained GMM; independent mean-preserving lognormal radiance across satellites, channels and pixels.",
+            "Radiance SD matches NEdT times the ABI Planck derivative at 255 K; asymmetric noise is a modelling assumption.",
             "Scene-conditional ABI transitions assumed applicable to ECO and within-scene Sunny files.",
             "Transferred scene transitions independent of simulated ECO retrieval radiometric noise.",
             "Sampled eligible native overlap pixels, not global or full-disk coverage.",
@@ -515,8 +528,13 @@ def prepare(settings, config):
     scenario = load_channel_scenarios(config["eco_channel_scenarios_file"])[settings["scenario"]]
     with Path(config["eco_channel_scenarios_file"]).open() as source:
         catalog = yaml.safe_load(source)
-    _, cache = open_cache(cache_paths(settings, settings["training_days"])[0])
-    planck = cache["planck"][0]
+    if settings.get("abi_mode") == "full":
+        from nominal_streaming import open_features
+        index, _ = open_features(settings, settings["training_days"][0])
+        planck = np.asarray(index["planck"])[0]
+    else:
+        _, cache = open_cache(cache_paths(settings, settings["training_days"])[0])
+        planck = cache["planck"][0]
     arrays = {key: [] for key in ("eco_radiance", "abi_radiance", "true_band_flux", "reference",
                                    "eco_noise_sd", "groups", "regimes")}
     angles = np.asarray(settings["angles_deg"])
@@ -766,10 +784,44 @@ def calculate(settings):
 
 
 def main():
+    global SETTINGS, CONFIG_PATH
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=("train", "prepare", "assignment", "diagnostics", "spatial", "calculate"))
+    parser.add_argument("--settings", type=Path, default=SETTINGS)
+    parser.add_argument("--config", type=Path, default=CONFIG_PATH)
+    parser.add_argument("--day", type=int)
+    parser.add_argument("--components", type=int)
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--initialization", type=int)
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--block", type=int)
+    parser.add_argument(
+        "stage",
+        choices=("cache", "candidate", "candidate-init", "candidate-combine", "train",
+                 "prepare", "assignment", "diagnostics", "spatial", "calculate",
+                 "preprocessing", "score", "adm", "assignment-day", "assignment-combine",
+                 "spatial-part", "spatial-combine", "stability-sample", "diagnostics-component",
+                 "diagnostics-combine"),
+    )
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be a positive integer")
+    SETTINGS, CONFIG_PATH = args.settings.resolve(), args.config.resolve()
     settings, config = options()
+    if settings.get("abi_mode") == "full" and args.stage in (
+            "cache", "candidate", "candidate-init", "candidate-combine", "train",
+            "assignment", "diagnostics", "spatial", "preprocessing", "score", "adm",
+            "assignment-day", "assignment-combine", "spatial-part", "spatial-combine",
+            "stability-sample", "diagnostics-component", "diagnostics-combine"):
+        import nominal_streaming
+        nominal_streaming.run(args.stage, settings, config, sys.modules[__name__],
+                              args.day, args.components, args.seed, args.initialization,
+                              workers=args.workers, block=args.block)
+        return
+    if args.stage in ("cache", "candidate", "candidate-init", "candidate-combine",
+                      "preprocessing", "score", "adm", "assignment-day", "assignment-combine",
+                      "spatial-part", "spatial-combine", "stability-sample", "diagnostics-component",
+                      "diagnostics-combine"):
+        parser.error(f"{args.stage} is only available for abi_mode: full")
     {"train": lambda: train(settings), "prepare": lambda: prepare(settings, config),
      "assignment": lambda: assignment(settings), "diagnostics": lambda: diagnostics(settings),
      "spatial": lambda: spatial(settings, config),
