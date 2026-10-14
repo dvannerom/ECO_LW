@@ -4,7 +4,6 @@ import argparse
 import csv
 import hashlib
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -131,6 +130,7 @@ def _paired_error_rows(residual_path):
             "regression_degree",
             "scene_index",
             "regime",
+            "population_weight",
             "fold",
             "relative_error_percent",
         }
@@ -179,6 +179,7 @@ def _paired_error_rows(residual_path):
                     "error_percent": error,
                     "regime": pending["regime"],
                     "fold": int(pending["fold"]),
+                    "population_weight": float(pending["population_weight"]),
                 }
                 pending = next(rows, None)
 
@@ -215,9 +216,14 @@ def _paired_error_rows(residual_path):
                     raise ValueError(
                         f"Non-finite end_to_end residual for {scenario_id}/{key}"
                     )
-                if n2bc["fold"] != fold or n2bc["regime"] != pending["regime"]:
+                weight = float(pending["population_weight"])
+                if (
+                    n2bc["fold"] != fold
+                    or n2bc["regime"] != pending["regime"]
+                    or n2bc["population_weight"] != weight
+                ):
                     raise ValueError(
-                        f"Residual regime/fold differs within paired scene "
+                        f"Residual regime/fold/weight differs within paired scene "
                         f"{scenario_id}/{key}"
                     )
                 model_key = key[:2]
@@ -230,6 +236,7 @@ def _paired_error_rows(residual_path):
                             "fold": fold,
                         },
                         "scene_index": key[2],
+                        "population_weight": weight,
                     }
                 )
                 shared_group = key[:3]
@@ -250,6 +257,17 @@ def _paired_error_rows(residual_path):
 
 
 def _paired_statistics(records):
+    """ABI-population-weighted paired spectral/angular statistics [%].
+
+    Weights are renormalized within the record group; variances and the
+    covariance use unbiased reliability-weight estimators (ddof=1 when equal).
+    """
+    weights = np.asarray(
+        [record["population_weight"] for record in records], dtype=np.float64
+    )
+    if np.any(~np.isfinite(weights)) or np.any(weights < 0) or not weights.sum() > 0:
+        raise ValueError("Paired residual population weights must be non-negative")
+    weights = weights / weights.sum()
     spectral = np.asarray(
         [record["n2bc_only"]["error_percent"] for record in records],
         dtype=np.float64,
@@ -262,28 +280,31 @@ def _paired_statistics(records):
         raise ValueError("At least two matched scenes are needed for sample covariance")
 
     angular_increment = end_to_end - spectral
-    covariance = np.cov(np.stack((spectral, angular_increment)), ddof=1)
+    covariance = np.cov(np.stack((spectral, angular_increment)), aweights=weights)
     total_variance = float(propagate_covariance(np.ones(2), covariance))
-    total_bias = float(np.mean(spectral) + np.mean(angular_increment))
+    spectral_bias = float(weights @ spectral)
+    angular_bias = float(weights @ angular_increment)
     return {
         "sample_count": int(spectral.size),
+        "effective_sample_size": float(1.0 / (weights @ weights)),
+        "weighting": "ABI scene population",
         "spectral_only": {
-            "signed_bias_percent": float(np.mean(spectral)),
-            "standard_deviation_percent": float(np.std(spectral, ddof=1)),
-            "rmse_percent": float(np.sqrt(np.mean(spectral**2))),
+            "signed_bias_percent": spectral_bias,
+            "standard_deviation_percent": float(np.sqrt(covariance[0, 0])),
+            "rmse_percent": float(np.sqrt(weights @ spectral**2)),
         },
         "angular_plus_interaction_increment": {
-            "signed_bias_percent": float(np.mean(angular_increment)),
-            "standard_deviation_percent": float(np.std(angular_increment, ddof=1)),
+            "signed_bias_percent": angular_bias,
+            "standard_deviation_percent": float(np.sqrt(covariance[1, 1])),
         },
         "covariance_matrix_percent_squared": covariance.tolist(),
         "covariance_spectral_with_angular_increment_percent_squared": float(
             covariance[0, 1]
         ),
         "total_end_to_end": {
-            "signed_bias_percent": total_bias,
+            "signed_bias_percent": spectral_bias + angular_bias,
             "standard_deviation_percent": float(np.sqrt(total_variance)),
-            "rmse_percent": float(np.sqrt(np.mean(end_to_end**2))),
+            "rmse_percent": float(np.sqrt(weights @ end_to_end**2)),
             "k2_scatter_percent": float(2.0 * np.sqrt(total_variance)),
         },
     }
@@ -341,8 +362,8 @@ def _paired_terms(
                 ),
                 "units": "percent of simulated reference OLR",
                 "statistic": (
-                    "Grouped out-of-fold signed mean, sample standard deviation, "
-                    "RMSE, and paired sample covariance"
+                    "Grouped out-of-fold ABI-population-weighted signed mean, "
+                    "standard deviation, RMSE, and paired covariance"
                 ),
                 "signed_bias": {
                     group: values["total_end_to_end"]["signed_bias_percent"]
@@ -407,8 +428,10 @@ def _paired_terms(
                     "The spectral-only residual uses true integrated band fluxes; "
                     "the end-to-end residual applies the fold-trained model to "
                     "ADM-retrieved band fluxes. Angular increment = end-to-end "
-                    "minus spectral-only residual. Propagate the observed 2x2 "
-                    "sample covariance with J=[1,1]."
+                    "minus spectral-only residual. Each Sunny file is weighted by "
+                    "the ABI population mass of its majority-vote ABI-GMM scene "
+                    "(renormalized within each scene domain). Propagate the "
+                    "weighted 2x2 covariance with J=[1,1]."
                 ),
                 "direct_applicability_or_transfer": (
                     "Directly evaluated for the configured ECO channel scenario "
@@ -423,6 +446,7 @@ def _paired_terms(
                 ),
                 "assumptions_and_gaps": [
                     "Clear/cloud records sharing a four-digit Sunny index are grouped in the same fold.",
+                    "ABI scene weighting retargets scene frequencies only; within-scene Sunny distributions are not reweighted, and sparsely populated ABI scenes reduce the effective sample size.",
                     "The angular increment includes ADM error and its interaction with N2BC; it is not an independently isolated physical source.",
                     (
                         "The integrated Sunny reference is "
@@ -652,8 +676,6 @@ def _scenario_checks(
         "channel_bands_um",
         "response_model",
         "edge_slope_per_um",
-        "envelope_band_um",
-        "envelope_edge_slope_per_um",
     )
     for name, document, has_scenario_metadata in metric_documents:
         observed = set(document.get("scenarios", {}))
@@ -926,6 +948,80 @@ def _render_report(registry):
             f"{requirement_ids}; gaps: {gap_ids} |"
         )
 
+    abi_assessment = registry["abi_production_assessment"]
+    abi_products = abi_assessment["product_outputs"]
+    abi_sensitivity = abi_assessment["uncertainty_assessments"][0]
+    lines.extend(
+        [
+            "",
+            "## ABI production products and linked sensitivity evidence",
+            "",
+            f"The registry is built with {len(abi_products['narrowband_fluxes'])} "
+            "narrowband-flux files, "
+            f"{len(abi_products['daily_broadband_fluxes'])} daily broadband-flux "
+            "files, and monthly product "
+            f"`{abi_products['monthly_flux']}` as Snakemake dependencies. These "
+            "are GOES ABI demonstration products, not ECO products.",
+            "",
+            f"The linked sensitivity assessment `{abi_sensitivity['assessment_id']}` "
+            f"contains {len(abi_sensitivity['experiment_ids'])} one-at-a-time "
+            "model-choice variants. ABI variants are paired over every native pixel "
+            "of the configured days and propagated to monthly 10 km cell means "
+            f"(daily: `{abi_sensitivity['daily_broadband_uncertainty_status']}`, "
+            f"monthly: `{abi_sensitivity['monthly_uncertainty_status']}`); Sunny "
+            "variants are conditional ECO simulation evidence. Sensitivities are not "
+            "summed. Missing product-level uncertainties are not zero.",
+            "",
+            "Requirement links indicate scientific relevance for the experiment "
+            "set only; they are not compliance scores or approved error allocations.",
+            "",
+            "Product-level gaps:",
+        ]
+    )
+    for gap in abi_assessment["product_level_uncertainty_gaps"]:
+        lines.append(
+            f"- **{gap['product']}** ({gap['status']}): {gap['next_step']}"
+        )
+    nominal_assessment = registry["conditional_nominal_assessment"]
+    if nominal_assessment is not None:
+        statistics = nominal_assessment["combined_statistics_w_m2"]
+        lines.extend(
+            [
+                "",
+                "## Conditional ECO/Sunny nominal assessment",
+                "",
+                f"Scenario `{nominal_assessment['scenario']}`, "
+                f"reference domain {nominal_assessment['reference_domain_um']} um; "
+                f"conditional bias {statistics.get('bias_w_m2')} W m-2, "
+                f"scene SD {statistics.get('scene_sd_w_m2')} W m-2, "
+                f"random SD {statistics.get('random_sd_w_m2')} W m-2, and "
+                f"RMSE {statistics.get('ensemble_rmse_w_m2')} W m-2.",
+                "",
+                nominal_assessment["interpretation"],
+                "",
+            ]
+        )
+
+    taxonomy = registry.get("scene_taxonomy_assessment")
+    if taxonomy is not None:
+        lines.extend(
+            [
+                "",
+                "## Scene taxonomy component count",
+                "",
+                f"Reviewed K = {taxonomy['n_components']} ({taxonomy['feature_set']}; "
+                f"diagnostics SHA-256 `{taxonomy['diagnostics_csv_sha256'][:12]}`); "
+                f"rationale: {taxonomy['selection']['rationale']}",
+                "",
+                f"Maximum |K+-1 change|: {json.dumps(taxonomy['max_abs_neighbour_delta'])}"
+                + (f"; untested neighbours {taxonomy['missing_neighbours']}"
+                   if taxonomy["missing_neighbours"] else ""),
+                "",
+                taxonomy["interpretation"],
+                "",
+            ]
+        )
+
     paired_terms = [
         term
         for term in registry["quantified_terms"]
@@ -1018,6 +1114,243 @@ def _render_report(registry):
     return "\n".join(lines)
 
 
+def _abi_production_assessment(
+    narrowband_paths,
+    daily_paths,
+    monthly_path,
+    sensitivity_path,
+    requirements,
+):
+    """Register ABI product outputs and the production-aligned (schema 2)
+    sensitivity evidence without treating either as an ECO product uncertainty.
+    """
+    product_groups = {
+        "narrowband_fluxes": narrowband_paths,
+        "daily_broadband_fluxes": daily_paths,
+    }
+    missing_products = [
+        str(path)
+        for paths in product_groups.values()
+        for path in paths
+        if not Path(path).is_file()
+    ]
+    if monthly_path is not None and not Path(monthly_path).is_file():
+        missing_products.append(str(monthly_path))
+    if missing_products:
+        raise FileNotFoundError(
+            "ABI production products are missing: " + ", ".join(missing_products)
+        )
+
+    sensitivity = None
+    sensitivity_artifact = None
+    if sensitivity_path is not None:
+        if not Path(sensitivity_path).is_file():
+            raise FileNotFoundError(
+                f"ABI/Sunny sensitivity report is missing: {sensitivity_path}"
+            )
+        sensitivity = _load_json(sensitivity_path)
+        if sensitivity.get("schema_version") != 2:
+            raise ValueError("ABI/Sunny sensitivity report must use schema_version 2")
+        sensitivity_artifact = _artifact_record(
+            sensitivity_path, sensitivity.get("provenance")
+        )
+    measured = sensitivity is not None
+    abi_variants = sensitivity["abi"]["variants"] if measured else {}
+    sunny_variants = sensitivity["sunny"]["variants"] if measured else {}
+
+    def abi_summary(entry):
+        return {
+            "source_group": entry["source_group"],
+            "description": entry["description"],
+            "daily_pixel_paired_difference_w_m2": {
+                split: {sat: entry["splits"][split][sat]["pixel"]
+                        for sat in entry["splits"][split]}
+                for split in ("held_in", "held_out")
+            },
+            "monthly_10km_paired_difference_w_m2": entry["monthly_10km"],
+        }
+
+    def sunny_summary(entry):
+        if entry["status"] != "quantified":
+            return {key: entry[key] for key in ("source_group", "description", "status", "reason")}
+        return {
+            "source_group": entry["source_group"],
+            "description": entry["description"],
+            "status": entry["status"],
+            "paired_difference_w_m2": {
+                key: entry["paired_difference_w_m2"][key]
+                for key in ("bias_w_m2", "scene_sd_w_m2", "class_rmse_w_m2")
+            },
+            "label_change_fraction": entry["label_change_fraction"],
+        }
+
+    assessment = {
+        "assessment_id": "production_aligned_sensitivity",
+        "evidence_status": (
+            "paired_model_choice_sensitivity_full_population" if measured else "not_run"
+        ),
+        "source_artifact_id": (
+            "abi_proxy_sensitivity" if sensitivity_artifact else None
+        ),
+        "scope": sensitivity.get("scope") if measured else None,
+        "experiment_ids": sorted(
+            [f"abi_{name}" for name in abi_variants]
+            + [f"sunny_{name}" for name in sunny_variants]
+        ),
+        "abi_variants": {name: abi_summary(entry) for name, entry in abi_variants.items()},
+        "sunny_variants": {name: sunny_summary(entry) for name, entry in sunny_variants.items()},
+        "single_source_terms": sensitivity.get("single_source_terms") if measured else None,
+        "estimated_quantity": (
+            "One-at-a-time paired broadband-flux changes (variant minus production) "
+            "over every native ABI pixel of the configured days, aggregated to daily "
+            "pixels and monthly 10 km cell means; and paired changes of the nominal "
+            "Sunny/ECO grouped held-out estimator."
+        ),
+        "requirement_references": [
+            requirements[requirement_id]
+            for requirement_id in (
+                "ObsReq_9",
+                "ObsReq_12",
+                "ObsReq_15",
+                "ObsReq_16",
+                "ObsReq_17",
+                "MeasReq_8",
+            )
+            if requirement_id in requirements
+        ],
+        "requirement_relationship": (
+            "Relevance/traceability across the experiment set only; these "
+            "sensitivities are not requirement-compliance scores."
+        ),
+        "transfer_statement": (
+            "ABI variants are model-choice sensitivities of the ABI demonstration "
+            "products (two-view ABI geometry and channels). They transfer to ECO only "
+            "through the matching Sunny/ECO variant. Sensitivities are not "
+            "uncertainties of record and are not summed."
+        ),
+        "daily_broadband_uncertainty_status": (
+            "paired_model_choice_sensitivity_on_complete_products" if measured
+            else "not_propagated_to_complete_products"
+        ),
+        "monthly_uncertainty_status": (
+            "paired_model_choice_sensitivity_on_monthly_10km_means" if measured
+            else "not_estimated"
+        ),
+    }
+    return {
+        "product_outputs": {
+            "narrowband_fluxes": [_display_path(path) for path in narrowband_paths],
+            "daily_broadband_fluxes": [_display_path(path) for path in daily_paths],
+            "monthly_flux": _display_path(monthly_path) if monthly_path else None,
+            "lineage_note": (
+                "These files are dependencies of the registry rule in the "
+                "Snakemake DAG; they are registered by path, not re-hashed here."
+            ),
+        },
+        "uncertainty_assessments": [assessment],
+        "product_level_uncertainty_gaps": [
+            {
+                "product": "daily broadband flux",
+                "status": assessment["daily_broadband_uncertainty_status"],
+                "missing_is_zero": False,
+                "next_step": (
+                    "Model-choice sensitivities are measured on the complete products; "
+                    "statistical terms (radiometric, spatial, assignment) have a single "
+                    "source in the nominal Sunny/ECO budget and are not yet mapped per "
+                    "ABI pixel. A covariance model is needed before any combination."
+                ),
+            },
+            {
+                "product": "monthly flux",
+                "status": assessment["monthly_uncertainty_status"],
+                "missing_is_zero": False,
+                "next_step": (
+                    "Temporal sampling (diurnal, missing slots) and inter-day error "
+                    "correlation are not estimated; do not assume a 1/sqrt(N) "
+                    "reduction of daily statistical terms."
+                ),
+            },
+        ],
+        "sensitivity_artifact": sensitivity_artifact,
+    }
+
+
+def _nominal_budget_assessment(report_path, requirements):
+    if report_path is None:
+        return None
+    if not Path(report_path).is_file():
+        raise FileNotFoundError(f"Conditional nominal budget is missing: {report_path}")
+    report = _load_json(report_path)
+    combined_rows = [
+        row for row in report.get("rows", []) if row.get("id") == "combined"
+    ]
+    if len(combined_rows) != 1:
+        raise ValueError(
+            f"Expected one combined row in nominal budget report {report_path}"
+        )
+    combined = combined_rows[0]
+    artifact = _artifact_record(report_path, report.get("provenance"))
+    return {
+        "assessment_id": "scene_conditioned_nominal_budget",
+        "source_artifact": artifact,
+        "scope": report.get("settings", {}).get("scope"),
+        "scenario": report.get("settings", {}).get("scenario"),
+        "reference_domain_um": report.get("settings", {}).get("reference_domain_um"),
+        "combined_statistics_w_m2": {
+            key: combined[key]
+            for key in (
+                "bias_w_m2",
+                "scene_sd_w_m2",
+                "random_sd_w_m2",
+                "ensemble_rmse_w_m2",
+            )
+            if key in combined
+        },
+        "requirement_references": [
+            requirements[requirement_id]
+            for requirement_id in ("ObsReq_9", "ObsReq_15", "ObsReq_16")
+            if requirement_id in requirements
+        ],
+        "evidence_status": "conditional_transfer_and_independence_hypotheses",
+        "interpretation": (
+            "This is a conditional ECO/Sunny estimate using ABI-derived scene "
+            "assignment and spatial evidence under explicit transfer and "
+            "independence hypotheses. It is not uncertainty propagated over "
+            "the complete ABI daily/monthly production products, a complete "
+            "ECO product uncertainty, or a requirement-compliance result."
+        ),
+    }
+
+
+def _scene_taxonomy_assessment(gate_path):
+    """Reviewed scene-taxonomy K and its K+-1 structural sensitivity (not propagated)."""
+    if gate_path is None:
+        return None
+    gate = _load_json(gate_path)
+    structural = gate["structural_taxonomy_choice"]
+    return {
+        "assessment_id": "scene_taxonomy_component_count",
+        "source_artifact": _artifact_record(gate_path),
+        "feature_set": gate["feature_set"],
+        "n_components": gate["n_components"],
+        "selection": gate["selection"],
+        "diagnostics_csv": gate["diagnostics_csv"],
+        "diagnostics_csv_sha256": gate["diagnostics_csv_sha256"],
+        "neighbours": structural["neighbours"],
+        "missing_neighbours": structural["missing_neighbours"],
+        "neighbour_deltas": structural["deltas"],
+        "max_abs_neighbour_delta": structural["max_abs_delta"],
+        "evidence_status": structural["status"],
+        "interpretation": (
+            "K is a reviewed manual choice shared by ABI production and the "
+            "nominal budget. K+-1 diagnostic changes bound a structural "
+            "classification-choice sensitivity; they are not a statistical "
+            "error. Their flux impact is measured by the production-aligned "
+            "sensitivity study (components_minus_1/components_plus_1)."
+        ),
+    }
+
+
 def build_registry(
     *,
     metrics_path=DEFAULT_METRICS,
@@ -1027,6 +1360,12 @@ def build_registry(
     residuals_path=DEFAULT_RESIDUALS,
     scenarios_path=DEFAULT_SCENARIOS,
     error_budget_path=DEFAULT_ERROR_BUDGET,
+    abi_narrowband_paths=(),
+    abi_daily_paths=(),
+    abi_monthly_path=None,
+    abi_sensitivity_path=None,
+    nominal_budget_path=None,
+    scene_taxonomy_gate_path=None,
 ):
     metrics = _load_json(metrics_path)
     n2bc_metrics = _load_json(n2bc_metrics_path)
@@ -1086,6 +1425,24 @@ def build_registry(
             "provenance_missing_or_unsupported"
         )
     source_artifacts["eco_residuals"] = residual_record
+    abi_assessment = _abi_production_assessment(
+        abi_narrowband_paths,
+        abi_daily_paths,
+        abi_monthly_path,
+        abi_sensitivity_path,
+        requirements,
+    )
+    nominal_assessment = _nominal_budget_assessment(
+        nominal_budget_path, requirements
+    )
+    if abi_assessment["sensitivity_artifact"] is not None:
+        source_artifacts["abi_proxy_sensitivity"] = abi_assessment[
+            "sensitivity_artifact"
+        ]
+    if nominal_assessment is not None:
+        source_artifacts["conditional_nominal_budget"] = nominal_assessment[
+            "source_artifact"
+        ]
 
     scenario_checks = _scenario_checks(
         scenario_ids,
@@ -1172,6 +1529,14 @@ def build_registry(
             "eco_adm_metrics": adm_metrics_path.resolve(),
             "abi_adm_proxy_summary": abi_summary_path.resolve(),
             "eco_residuals": residuals_path.resolve(),
+            **(
+                {"abi_proxy_sensitivity": Path(abi_sensitivity_path).resolve()}
+                if abi_sensitivity_path is not None else {}
+            ),
+            **(
+                {"conditional_nominal_budget": Path(nominal_budget_path).resolve()}
+                if nominal_budget_path is not None else {}
+            ),
         },
     )
     return {
@@ -1192,6 +1557,9 @@ def build_registry(
         "generation_provenance": report_provenance,
         "overall_evidence_freshness": overall_freshness,
         "source_artifacts": source_artifacts,
+        "abi_production_assessment": abi_assessment,
+        "conditional_nominal_assessment": nominal_assessment,
+        "scene_taxonomy_assessment": _scene_taxonomy_assessment(scene_taxonomy_gate_path),
         "scenario_catalog": {
             "path": _display_path(scenarios_path),
             "sha256": sha256_file(scenarios_path),
@@ -1245,21 +1613,19 @@ def main():
     parser.add_argument("--n2bc-metrics", type=Path, default=DEFAULT_N2BC_METRICS)
     parser.add_argument("--adm-metrics", type=Path, default=DEFAULT_ADM_METRICS)
     parser.add_argument("--abi-summary", type=Path, default=DEFAULT_ABI_SUMMARY)
+    parser.add_argument(
+        "--abi-narrowband-products", type=Path, nargs="*", default=[]
+    )
+    parser.add_argument("--abi-daily-products", type=Path, nargs="*", default=[])
+    parser.add_argument("--abi-monthly-product", type=Path)
+    parser.add_argument("--abi-sensitivity-report", type=Path)
+    parser.add_argument("--nominal-budget-report", type=Path)
+    parser.add_argument("--scene-taxonomy-gate", type=Path)
     parser.add_argument("--residuals", type=Path, default=DEFAULT_RESIDUALS)
     parser.add_argument("--scenarios", type=Path, default=DEFAULT_SCENARIOS)
     parser.add_argument("--error-budget", type=Path, default=DEFAULT_ERROR_BUDGET)
     parser.add_argument("--registry-output", type=Path, required=True)
     parser.add_argument("--report-output", type=Path, required=True)
-    parser.add_argument(
-        "--figure-paths", type=Path, nargs=3,
-        metavar=("EVIDENCE_MAP", "RESIDUAL_SUMMARY", "VARIANCE_DECOMPOSITION"),
-        help="Link the three registry-driven workflow figures from the report.",
-    )
-    parser.add_argument(
-        "--numerical-figure-paths", type=Path, nargs=3,
-        metavar=("NUMERICAL_BUDGET", "SCENARIO_BUDGETS", "CHANNEL_DIAGNOSTICS"),
-        help="Link the LW numerical budget and its scenario/channel companions.",
-    )
     args = parser.parse_args()
 
     registry = build_registry(
@@ -1270,37 +1636,18 @@ def main():
         residuals_path=args.residuals,
         scenarios_path=args.scenarios,
         error_budget_path=args.error_budget,
+        abi_narrowband_paths=args.abi_narrowband_products,
+        abi_daily_paths=args.abi_daily_products,
+        abi_monthly_path=args.abi_monthly_product,
+        abi_sensitivity_path=args.abi_sensitivity_report,
+        nominal_budget_path=args.nominal_budget_report,
+        scene_taxonomy_gate_path=args.scene_taxonomy_gate,
     )
     args.registry_output.parent.mkdir(parents=True, exist_ok=True)
     args.report_output.parent.mkdir(parents=True, exist_ok=True)
     with args.registry_output.open("w") as output:
         json.dump(registry, output, indent=2)
     report = _render_report(registry)
-    figures = []
-    if args.figure_paths:
-        figures.extend(zip((
-            "Stage-ordered evidence coverage",
-            "Signed bias, sample standard deviation and RMSE",
-            "Covariance-aware variance decomposition",
-        ), args.figure_paths))
-    if args.numerical_figure_paths:
-        figures.extend(zip((
-            "Numerical LW budget: combined currently quantified contribution",
-            "Scenario companions with fixed N2BC model settings",
-            "Per-channel ADM diagnostics (not additive broadband contributions)",
-        ), args.numerical_figure_paths))
-    if figures:
-        report += "\n## Graphical interpretation\n\n"
-        report += (
-            "These figures are generated from the JSON registry by the "
-            "`uncertainty_assessment` workflow target. They are conditional "
-            "evidence summaries, not a total uncertainty budget or compliance test.\n\n"
-        )
-        for title, path in figures:
-            relative_path = Path(os.path.relpath(
-                path.resolve(), args.report_output.parent.resolve()
-            )).as_posix()
-            report += f"### {title}\n\n![{title}](<{relative_path}>)\n\n"
     args.report_output.write_text(report)
     print(f"Wrote uncertainty registry: {args.registry_output}")
     print(f"Wrote uncertainty gap report: {args.report_output}")

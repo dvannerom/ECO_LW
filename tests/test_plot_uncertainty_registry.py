@@ -25,15 +25,15 @@ SPEC.loader.exec_module(plotter)
 def fixture_registry():
     statistics = _paired_statistics([
         {"n2bc_only": {"error_percent": spectral},
-         "end_to_end": {"error_percent": total}}
+         "end_to_end": {"error_percent": total}, "population_weight": 1.0}
         for spectral, total in ((-2, 1), (0, 2), (2, 3))
     ])
     term = {
-        "term_id": "sunny_paired_n2bc_adm:example:stratified:degree_2",
+        "term_id": "sunny_paired_n2bc_adm:example:abi_population_weighted:degree_2",
         "stage": "N2BC application / broadband flux",
         "eco_scenario": {"id": "example"},
         "scene_geometry_spectral_domain": {
-            "regression_training_mode": "clear_cloud_stratified",
+            "regression_training_mode": "abi_population_weighted",
             "regression_degree": 2,
         },
         "statistics_by_scene_domain": {
@@ -73,17 +73,6 @@ class RegistryPlotTests(unittest.TestCase):
             "Sunny_simulation_reference_um": [2.5, 500],
             "ObsReq_8_reference_um": [4, 100],
         }
-        for regime in plotter.REGIME_LABELS:
-            registry["quantified_terms"].append({
-                "term_id": f"sunny_adm_band_flux:example:water_vapour:{regime}",
-                "eco_scenario": {"id": "example"},
-                "scene_geometry_spectral_domain": {
-                    "scene_domain": regime, "channel": "water_vapour",
-                },
-                "signed_bias": 0.25,
-                "statistics": {"standard_deviation_percent": 0.5, "rmse_percent": 0.559},
-                "freshness": {"status": "unverified"},
-            })
         return registry
 
     def test_measured_sensitivity_rows_and_missing_results(self):
@@ -91,34 +80,46 @@ class RegistryPlotTests(unittest.TestCase):
         rows = plotter.experiment_budget_rows(
             registry, registry["quantified_terms"][0], plotter.load_experiment_spec()
         )
-        metrics = {
-            "w_m2": {"bias": .1, "sd": .2, "rmse": .3},
-            "percent": {"bias": .4, "sd": .5, "rmse": .6},
-        }
+        pixel = {"count": 9, "bias_w_m2": .1, "sd_w_m2": .2, "rmse_w_m2": .3}
+        split = {"G16": {"pixel": pixel}, "G18": {"pixel": pixel}}
+        classes = {"bias_w_m2": .4, "scene_sd_w_m2": .5, "class_rmse_w_m2": .6}
+        abi_groups = {"components_minus_1": "scene_identification", "adm_quadratic": "angular",
+                      "n2b_quadratic": "spectral"}
         report = {
-            "schema_version": 1, "provenance": {},
-            "settings": {"sunny": {"scenario": "rfma_goal_6"},
-                         "abi": {"components": [6, 7], "baseline_components": 7}},
-            "results": {
-                f"{name}_0": {**metrics, "truth_error": metrics}
-                for name in ("sunny_noise", "abi_spatial", "abi_components_6",
-                             "abi_assignment", "sunny_adm", "abi_adm",
-                             "sunny_robust", "sunny_spectral", "sunny_joint")
-            },
-            "covariance_percent_squared": [[1, -.1], [-.1, .2]],
-            "joint_interactions": [{"w_m2": {"rmse": .01}}],
+            "schema_version": 2, "provenance": {},
+            "abi": {"variants": {name: {
+                "source_group": group, "description": name,
+                "splits": {"held_in": split, "held_out": split, "all": split},
+                "monthly_10km": {"G16": {**pixel, "rmse_w_m2": .05}, "G18": {**pixel, "rmse_w_m2": .07}},
+            } for name, group in abi_groups.items()}},
+            "sunny": {"scenario": "rfma_goal_6", "baseline_truth_error_w_m2": classes, "variants": {
+                "n2bc_robust": {"source_group": "spectral", "description": "", "status": "quantified",
+                                "paired_difference_w_m2": classes, "paired_difference_percent": classes},
+                "adm_per_file": {"source_group": "angular", "description": "", "status": "unsupported",
+                                 "reason": "no support"},
+            }},
         }
         with patch.object(plotter, "check_provenance", return_value={"status": "current"}):
             measured = plotter.sensitivity_budget_rows(rows, report)
-            self.assertIn("0.300 W/m2", measured[0][2])
-            self.assertIn("ABI GMM 6 vs 7", measured[2][2])
-            self.assertIn("spectral-only error against truth", measured[4][2])
-            self.assertIn("Full ECO total remains unquantified", measured[-1][2])
-            self.assertIn("RMSE 0.010 W/m2", measured[5][2])
+            self.assertIn("nominal Sunny/ECO budget", measured[0][2])
+            abi_row = next(row for row in measured if row[0] == "ABI proxy sensitivity: components_minus_1")
+            self.assertIn("ABI components_minus_1 (G16/G18)", abi_row[2])
+            self.assertIn("monthly 10 km RMSE 0.050/0.070 W/m2", abi_row[2])
+            per_file_row = next(row for row in measured if row[0] == "Sunny/ECO sensitivity: adm_per_file")
+            self.assertIn("adm_per_file: unsupported", per_file_row[2])
+            robust_row = next(row for row in measured if row[0] == "Sunny/ECO sensitivity: n2bc_robust")
+            self.assertIn("ECO/Sunny n2bc_robust: bias +0.400; RMSE 0.600 W/m2", robust_row[2])
+            self.assertIn("Not added", robust_row[2])
+            self.assertEqual(len(measured), len(rows) + 5)
+            self.assertIn("never added", measured[7][2])
             self.assertEqual(rows[0][2], "Pending: NEdT is an input, not a broadband-flux error.")
-            del report["results"]["sunny_noise_0"]
-            with self.assertRaisesRegex(ValueError, "required experiment"):
+            pixel["rmse_w_m2"] = float("nan")
+            with self.assertRaisesRegex(ValueError, "Invalid sensitivity"):
                 plotter.sensitivity_budget_rows(rows, report)
+            report["schema_version"] = 1
+            with self.assertRaisesRegex(ValueError, "schema"):
+                plotter.sensitivity_budget_rows(rows, report)
+        report["schema_version"] = 2
         with patch.object(plotter, "check_provenance",
                           return_value={"status": "stale", "mismatches": ["code"]}):
             with self.assertRaisesRegex(ValueError, "Stale"):
@@ -199,41 +200,37 @@ class RegistryPlotTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "biases"):
             plotter.budget_rows(registry, term)
 
-    def test_fixed_model_selection_missing_data_and_channel_units(self):
+    def test_fixed_model_selection_and_missing_data(self):
         registry = self.numerical_fixture()
         self.assertEqual(
-            plotter.selected_models(registry, "clear_cloud_stratified", 2)["example"]["freshness"]["status"],
+            plotter.selected_models(registry, "abi_population_weighted", 2)["example"]["freshness"]["status"],
             "stale",
         )
         with self.assertRaisesRegex(ValueError, "Expected one"):
-            plotter.selected_models(registry, "unstratified", 3)
+            plotter.selected_models(registry, "legacy_mode", 3)
         term = registry["quantified_terms"][0]
         del term["statistics_by_scene_domain"]["cloudy"]
         self.assertEqual(plotter.budget_rows(registry, term)[-1][3], "Not available")
-        rows = plotter.channel_rows(registry, "example")
-        self.assertEqual(rows[0][1], "+0.250 / 0.500 / 0.559")
-        self.assertEqual(rows[0][-1], "unverified")
-        with self.assertRaisesRegex(ValueError, "No ADM"):
-            plotter.channel_rows(registry, "missing")
         with self.assertRaisesRegex(ValueError, "Missing or inconsistent"):
             plotter.lw_requirement(registry, "ObsReq_1")
 
-    def test_three_numerical_companions_render(self):
+    def test_variance_figure_and_required_budget_csv_render(self):
         registry = self.numerical_fixture()
         with tempfile.TemporaryDirectory() as directory:
-            outputs = [Path(directory) / f"{name}.png" for name in ("budget", "scenarios", "channels")]
-            plotter.plot_numerical_budget(
-                registry, outputs[0], "example", "clear_cloud_stratified", 2,
-                csv_path=Path(directory) / "budget.csv",
+            variance_figure = Path(directory) / "variance.png"
+            budget_csv = Path(directory) / "budget.csv"
+            plotter.plot_variance_decomposition(registry, variance_figure)
+            plotter.write_registry_budget_csv(
+                registry,
+                budget_csv,
+                "example",
+                "abi_population_weighted",
+                2,
+                plotter.load_experiment_spec(),
             )
-            self.assertTrue((Path(directory) / "budget.csv").is_file())
-            plotter.plot_scenario_budgets(
-                registry, outputs[1], "clear_cloud_stratified", 2
-            )
-            plotter.plot_channel_diagnostics(registry, outputs[2])
-            for output in outputs:
-                self.assertGreater(output.stat().st_size, 1000)
-                self.assertEqual(output.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertGreater(variance_figure.stat().st_size, 1000)
+            self.assertEqual(variance_figure.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertTrue(budget_csv.is_file())
 
     def test_increment_rmse_uses_sample_count_and_bias(self):
         statistics = fixture_registry()["quantified_terms"][0]["statistics_by_scene_domain"]["all_regimes"]
@@ -249,40 +246,16 @@ class RegistryPlotTests(unittest.TestCase):
         statistics = fixture_registry()["quantified_terms"][0]["statistics_by_scene_domain"]["all_regimes"]
         contributions, total = plotter.variance_contributions(statistics)
         np.testing.assert_allclose(contributions, [4, 1, -4])
-        self.assertEqual(total, 1)
+        self.assertAlmostEqual(total, 1)
         inconsistent = copy.deepcopy(statistics)
         inconsistent["total_end_to_end"]["standard_deviation_percent"] = 10
         with self.assertRaisesRegex(ValueError, "reconstruct"):
             plotter.variance_contributions(inconsistent)
 
-    def test_map_keeps_missing_proxy_and_stale_separate(self):
-        rows = {row["stage"]: row for row in plotter.evidence_rows(fixture_registry())}
-        self.assertEqual(rows["Radiances"]["simulation"], 0)
-        self.assertEqual(rows["Radiances"]["gaps"], 1)
-        self.assertEqual(rows["ADM angular conversion"]["proxy"], 1)
-        self.assertEqual(rows["ADM angular conversion"]["simulation"], 0)
-        self.assertEqual(rows["ADM angular conversion"]["freshness"], "unverified")
-        self.assertEqual(rows["N2BC application"]["freshness"], "stale")
-        self.assertEqual(rows["Aggregation"]["gaps"], 1)
-        self.assertEqual(rows["Aggregation"]["propagation"], "No propagated\nECO estimate")
-
-    def test_narrowband_diagnostics_cover_both_stages(self):
-        registry = fixture_registry()
-        registry["stage_order"].append("Narrowband fluxes")
-        registry["quantified_terms"].append({
-            "term_id": "sunny_adm_band_flux:example:channel:all_regimes",
-            "stage": "ADM angular conversion / narrowband flux",
-            "evidence_status": "conditional_simulation",
-            "freshness": {"status": "current"},
-        })
-        rows = {row["stage"]: row for row in plotter.evidence_rows(registry)}
-        self.assertEqual(rows["ADM angular conversion"]["simulation"], 1)
-        self.assertEqual(rows["Narrowband fluxes"]["simulation"], 1)
-        self.assertIn("Effect in paired output", rows["Narrowband fluxes"]["propagation"])
-
     def test_constant_bias_has_zero_sd_but_nonzero_rmse(self):
         statistics = _paired_statistics([
-            {"n2bc_only": {"error_percent": 0}, "end_to_end": {"error_percent": 5}}
+            {"n2bc_only": {"error_percent": 0}, "end_to_end": {"error_percent": 5},
+             "population_weight": 1.0}
             for _ in range(3)
         ])
         np.testing.assert_allclose(
@@ -293,18 +266,13 @@ class RegistryPlotTests(unittest.TestCase):
         np.testing.assert_array_equal(contributions, [0, 0, 0])
         self.assertEqual(total, 0)
 
-    def test_three_figures_render_with_single_scenario(self):
+    def test_variance_decomposition_figure_renders(self):
         registry = fixture_registry()
         with tempfile.TemporaryDirectory() as directory:
-            for function, name in (
-                (plotter.plot_evidence_map, "coverage.png"),
-                (plotter.plot_residual_summary, "residuals.png"),
-                (plotter.plot_variance_decomposition, "variance.png"),
-            ):
-                output = Path(directory) / name
-                function(registry, output)
-                self.assertGreater(output.stat().st_size, 1000)
-                self.assertEqual(output.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+            output = Path(directory) / "variance.png"
+            plotter.plot_variance_decomposition(registry, output)
+            self.assertGreater(output.stat().st_size, 1000)
+            self.assertEqual(output.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
     def test_missing_pairs_and_invalid_covariance_are_explicit(self):
         registry = fixture_registry()
