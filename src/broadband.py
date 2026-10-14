@@ -79,11 +79,66 @@ def cubic_regression(rad, coeff=None, intercept=None):
     return out
 
 
+REGRESSION_DEGREES = {"linear": 1, "quadratic": 2, "cubic": 3}
+
+
+def polynomial_term_count(degree, channels=6):
+    """Number of PolynomialFeatures(degree, include_bias=False) terms."""
+    from math import comb
+    return comb(channels+degree, degree)-1
+
+
+def polynomial_regression(bt, coeff, intercept, degree, dtype=np.float64):
+    """Evaluate the narrowband-to-broadband polynomial on bt[n, 6] in K.
+
+    Term order matches sklearn PolynomialFeatures(include_bias=False):
+    all degree-1 terms, then i<=j, then i<=j<=l. Accumulates in ``dtype``
+    (float64 by default) without forming the (n, terms) design matrix, so
+    extra memory is three (n,) arrays. Returns (n,) effective broadband
+    temperature-equivalent value in the units of the fitted target.
+    """
+    if degree not in (1, 2, 3):
+        raise ValueError("Polynomial degree must be 1, 2 or 3")
+    coeff = np.asarray(coeff, dtype=np.float64)
+    if bt.ndim != 2 or bt.shape[1] != 6:
+        raise ValueError("Expected brightness temperatures shaped (n, 6)")
+    if coeff.size != polynomial_term_count(degree):
+        raise ValueError(f"Degree {degree} needs {polynomial_term_count(degree)} coefficients, got {coeff.size}")
+    x = [np.asarray(bt[:, i], dtype=dtype) for i in range(6)]
+    out = np.full(bt.shape[0], intercept, dtype=dtype)
+    k = 0
+    for i in range(6):
+        out += coeff[k]*x[i]
+        k += 1
+    if degree >= 2:
+        for i in range(6):
+            for j in range(i, 6):
+                out += coeff[k]*(x[i]*x[j])
+                k += 1
+    if degree == 3:
+        for i in range(6):
+            for j in range(i, 6):
+                xij = x[i]*x[j]
+                for l in range(j, 6):
+                    out += coeff[k]*(xij*x[l])
+                    k += 1
+    return out
+
+
+def load_regression_coefficients(path, form="cubic"):
+    """Load (coefficients, intercept, degree) for ``form`` in linear/quadratic/cubic."""
+    if form not in REGRESSION_DEGREES:
+        raise ValueError(f"Unknown regression form {form}")
+    with open(path) as handle:
+        entry = json.load(handle)[form]
+    return entry["coefficients"], float(entry["intercept"]), REGRESSION_DEGREES[form]
+
+
 def load_cubic_coefficients(path):
     """Load cubic regression coefficients fitted by scripts/compute_temperature_SBDART.py.
 
     :param path: (str or Path) JSON file with a "cubic" key holding
-        "coefficients" (list of 27 floats) and "intercept" (float).
+        "coefficients" (list of 83 floats) and "intercept" (float).
     :return: (list[float], float) coefficients, intercept, ready for cubic_regression().
     """
     with open(path) as handle:

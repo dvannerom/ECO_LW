@@ -15,44 +15,45 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from adm import radiance_linear
-from netcdf_io import load_data
+from abi_product import load_adm_library
+from sensitivity import angular_basis, angular_integral
 from spectral_response import CHANNELS
 from uncertainty import build_provenance
 
-FILENAME_PATTERN = re.compile(
-    r"^ADM_(?P<day>\d+)_res(?P<resolution>\d+)km_C(?P<channel>\d+)_scene(?P<scene>\d+)\.nc$"
-)
+FILENAME_PATTERN = re.compile(r"^adm_k(?P<components>\d+)_day(?P<day>\d+)\.joblib$")
 
 
 def summarize_adm_files(input_files, expected_days, n_components, resolution_km):
+    """Between-day spread of per-day in-sample scene ADM libraries.
+
+    Each input is component_adms/daily/adm_k{K}_day{d}.joblib (K, 6, 1),
+    the regularized form shape(theta) = 1 + b*(Elmer(theta)-1) fitted on one
+    day's paired G16/G18 ratios with the production scene taxonomy. Reported
+    per channel/scene: b, the hemispheric integral I ("normalization") and
+    the anisotropy profile shape(theta)/I used to correct radiances.
+    """
     expected_days = tuple(sorted(int(day) for day in expected_days))
     grouped = defaultdict(list)
-    excluded_records = 0
     for input_file in input_files:
         path = Path(input_file)
         match = FILENAME_PATTERN.match(path.name)
         if match is None:
-            raise ValueError(f"Unexpected ABI ADM filename: {path.name}")
+            raise ValueError(f"Unexpected ABI daily ADM library filename: {path.name}")
         day = int(match.group("day"))
-        file_resolution = int(match.group("resolution"))
-        channel = int(match.group("channel"))
-        scene = int(match.group("scene"))
-        if day not in expected_days or file_resolution != resolution_km:
+        if int(match.group("components")) != n_components:
+            raise ValueError(f"{path.name} does not use K={n_components}")
+        if day not in expected_days:
             continue
-        if scene >= n_components:
-            excluded_records += 1
-            continue
-        if not 0 <= channel < len(CHANNELS) or scene < 0:
-            raise ValueError(f"ABI ADM index outside configured range: {path.name}")
-        data = load_data(str(path), variable_names=("b", "norm"))
-        b_value = float(np.asarray(data["b"]))
-        norm_value = float(np.asarray(data["norm"]))
-        if not np.isfinite(b_value) or not np.isfinite(norm_value) or norm_value <= 0:
-            raise ValueError(f"Invalid ABI ADM parameters in {path}")
-        grouped[(channel, scene)].append(
-            {"day": day, "b": b_value, "norm": norm_value}
-        )
+        library, form, _ = load_adm_library(path, n_components)
+        if form != "regularized":
+            raise ValueError(f"Daily ADM proxy summary expects the regularized form: {path}")
+        integral = angular_integral(library, form)
+        for channel in range(len(CHANNELS)):
+            for scene in range(n_components):
+                grouped[(channel, scene)].append({
+                    "day": day, "b": float(library[scene, channel, 0]),
+                    "norm": float(integral[scene, channel])})
+    excluded_records = 0
 
     viewing_angles_deg = np.arange(0.0, 70.0 + 5.0, 5.0)
     summaries = []
@@ -68,9 +69,8 @@ def summarize_adm_files(input_files, expected_days, n_components, resolution_km)
 
             shape_parameters = np.asarray([record["b"] for record in records])
             normalizations = np.asarray([record["norm"] for record in records])
-            angular_profiles = normalizations[:, None] * radiance_linear(
-                viewing_angles_deg[None, :], shape_parameters[:, None]
-            )
+            basis = angular_basis(viewing_angles_deg, "regularized")[:, 0]
+            angular_profiles = (1 + shape_parameters[:, None] * basis[None, :]) / normalizations[:, None]
             mean_profile = np.mean(angular_profiles, axis=0)
             profile_spread = np.std(angular_profiles, axis=0, ddof=1)
             relative_profile_spread = np.divide(
@@ -115,11 +115,14 @@ def summarize_adm_files(input_files, expected_days, n_components, resolution_km)
             )
 
     return {
-        "evidence_source": "GOES-16/GOES-18 ABI fitted ADM products",
+        "evidence_source": "GOES-16/GOES-18 ABI per-day in-sample scene ADM libraries (production taxonomy)",
+        "adm_parameterization": (
+            "shape(theta)=1+b*(Elmer(theta)-1); normalization is the hemispheric integral I; "
+            "angular_profile is shape(theta)/I (radiance anisotropy relative to F/pi)"),
         "evidence_type": "empirical_proxy_between_day_ADM_variability",
         "quantity": "between-day spread of scene/channel fitted ADM shape and normalized angular profile",
         "not_estimated": [
-            "curve_fit parameter covariance (not retained in existing ADM files)",
+            "least-squares parameter covariance (not retained in the daily libraries)",
             "ECO-specific ADM uncertainty without channel/scene/geometry transfer validation",
             "independent radiance measurement noise",
         ],
@@ -165,8 +168,8 @@ def main():
         root=ROOT,
         code_paths=(
             Path(__file__).resolve(),
-            ROOT / "src" / "adm.py",
-            ROOT / "src" / "netcdf_io.py",
+            ROOT / "src" / "abi_product.py",
+            ROOT / "src" / "sensitivity.py",
             ROOT / "src" / "spectral_response.py",
         ),
         configuration_paths=(
