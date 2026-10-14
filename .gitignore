@@ -48,6 +48,9 @@ data/diagnostics/nominal/*
 figures/diagnostics/**/*.json
 figures/diagnostics/**/*.csv
 !figures/diagnostics/gmm/production/gmm_component_diagnostics.csv
+figures/nominal_production/diagnostics/**/*.json
+figures/nominal_production/diagnostics/**/*.csv
+!figures/nominal_production/diagnostics/gmm/production/gmm_component_diagnostics.csv
 
 # SBDART "Sunny" scene library (large, externally generated, not versioned)
 data/Sunny/

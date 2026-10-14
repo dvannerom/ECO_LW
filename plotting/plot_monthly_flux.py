@@ -12,19 +12,25 @@ import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import xarray as xr
 
+PLOT_STEP = 4
+
 
 def plot_monthly_flux(
     data_file,
-    output_dir="figures/products/monthly_flux",
+    output_dir="figures/abi_proxy/products/monthly_flux",
     lambda_center=-106,
 ):
     """Plot monthly G16, G18, and standard deviation of their difference."""
     with xr.open_dataset(data_file, engine="netcdf4", cache=False) as dataset:
-        lat = dataset["lat"].values
-        lon = dataset["lon"].values
-        flux_g16 = dataset["flux_G16_monthly"].values
-        flux_g18 = dataset["flux_G18_monthly"].values
-        std_diff = dataset["std_diff"].values
+        sampled = dataset.isel(
+            y=slice(None, None, PLOT_STEP),
+            x=slice(None, None, PLOT_STEP),
+        )
+        lat = sampled["lat"].values
+        lon = sampled["lon"].values
+        flux_g16 = sampled["flux_G16_monthly"].values
+        flux_g18 = sampled["flux_G18_monthly"].values
+        std_diff = sampled["std_diff"].values
 
     projection = ccrs.Sinusoidal(central_longitude=lambda_center)
     fig, axes = plt.subplots(
@@ -34,9 +40,9 @@ def plot_monthly_flux(
         subplot_kw={"projection": projection},
     )
     plot_data = (
-        (flux_g16, "Monthly GOES-16 broadband flux", 150, 350),
-        (flux_g18, "Monthly GOES-18 broadband flux", 150, 350),
-        (std_diff, "Standard deviation of G16 - G18", 0, 20),
+        (flux_g16, "Monthly GOES-16 broadband irradiance", 150, 350),
+        (flux_g18, "Monthly GOES-18 broadband irradiance", 150, 350),
+        (std_diff, "Standard deviation of G16 - G18 irradiance", 0, 20),
     )
     for axis, (values, title, vmin, vmax) in zip(axes, plot_data):
         image = axis.pcolormesh(
@@ -61,7 +67,9 @@ def plot_monthly_flux(
             ylocs=range(-90, 90, 30),
         )
         axis.set_title(title)
-        fig.colorbar(image, ax=axis, orientation="vertical")
+        fig.colorbar(
+            image, ax=axis, orientation="vertical", label=r"W m$^{-2}$"
+        )
 
     fig.tight_layout()
     output_dir = Path(output_dir)
@@ -85,7 +93,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="figures/products/monthly_flux",
+        default="figures/abi_proxy/products/monthly_flux",
         help="Directory for the PNG output",
     )
     parser.add_argument(

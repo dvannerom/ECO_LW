@@ -1,4 +1,4 @@
-"""Plot configured ECO channel responses and compare active temporary bands."""
+"""Plot the configured RfMA goal/threshold ECO channel responses."""
 
 import argparse
 import math
@@ -21,7 +21,10 @@ from eco_spectral_response import channel_response_matrix, load_channel_scenario
 
 
 DEFAULT_SCENARIOS = ROOT / "config" / "eco_channel_scenarios.yaml"
-DEFAULT_OUTPUT = ROOT / "figures" / "diagnostics" / "instrument" / "eco_channel_responses.png"
+DEFAULT_OUTPUT = (
+    ROOT / "figures" / "nominal_production" / "diagnostics" / "instrument"
+    / "eco_channel_responses.png"
+)
 
 
 def plot_responses(scenario_path, output_path, wavelength_min, wavelength_max):
@@ -31,12 +34,12 @@ def plot_responses(scenario_path, output_path, wavelength_min, wavelength_max):
     default_slope = float(catalog["default_edge_slope_per_um"])
     wavelengths = np.linspace(wavelength_min, wavelength_max, 2000)
 
-    columns = 3
+    columns = min(3, len(scenarios))
     rows = math.ceil(len(scenarios) / columns)
     figure, axes = plt.subplots(
         rows,
         columns,
-        figsize=(15, 3.9 * rows),
+        figsize=(5 * columns, 3.9 * rows),
         sharex=True,
         sharey=True,
         squeeze=False,

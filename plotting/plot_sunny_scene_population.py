@@ -176,7 +176,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True, help="sunny_scenes.csv")
     parser.add_argument("--summary", type=Path, help="Defaults to summary.json beside input")
-    parser.add_argument("--output-dir", type=Path, default=Path("figures/diagnostics/abi_sunny/comparison"))
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("figures/nominal_production/diagnostics/abi_sunny/comparison"),
+    )
     args = parser.parse_args(argv)
     report = plot_population(
         args.input, args.summary or args.input.parent / "summary.json", args.output_dir

@@ -13,18 +13,24 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import xarray as xr
 
+PLOT_STEP = 4
+
 
 def plot_broadband_flux(
     data_file,
-    output_dir="figures/products/broadband_flux",
+    output_dir="figures/abi_proxy/products/broadband_flux",
     lambda_center=-106,
 ):
     """Plot G16, G18, and G16-G18 broadband flux from a saved product."""
     with xr.open_dataset(data_file, engine="netcdf4", cache=False) as dataset:
-        lat = dataset["lat"].values
-        lon = dataset["lon"].values
-        flux_g16 = dataset["flux_G16"].values
-        flux_g18 = dataset["flux_G18"].values
+        sampled = dataset.isel(
+            y=slice(None, None, PLOT_STEP),
+            x=slice(None, None, PLOT_STEP),
+        )
+        lat = sampled["lat"].values
+        lon = sampled["lon"].values
+        flux_g16 = sampled["flux_G16"].values
+        flux_g18 = sampled["flux_G18"].values
 
     difference = flux_g16 - flux_g18
     projection = ccrs.Sinusoidal(central_longitude=lambda_center)
@@ -35,9 +41,9 @@ def plot_broadband_flux(
         subplot_kw={"projection": projection},
     )
     plot_data = (
-        (flux_g16, "GOES-16 broadband flux", mpl.cm.jet, 80, 380),
-        (flux_g18, "GOES-18 broadband flux", mpl.cm.jet, 80, 380),
-        (difference, "G16 - G18 broadband flux", mpl.cm.bwr, -40, 40),
+        (flux_g16, "GOES-16 broadband irradiance", mpl.cm.jet, 80, 380),
+        (flux_g18, "GOES-18 broadband irradiance", mpl.cm.jet, 80, 380),
+        (difference, "G16 - G18 broadband irradiance", mpl.cm.bwr, -40, 40),
     )
     for axis, (values, title, cmap, vmin, vmax) in zip(axes, plot_data):
         image = axis.pcolormesh(
@@ -62,7 +68,9 @@ def plot_broadband_flux(
             ylocs=range(-90, 90, 30),
         )
         axis.set_title(title)
-        fig.colorbar(image, ax=axis, orientation="vertical")
+        fig.colorbar(
+            image, ax=axis, orientation="vertical", label=r"W m$^{-2}$"
+        )
 
     fig.tight_layout()
     output_dir = Path(output_dir)
@@ -80,7 +88,9 @@ def main(argv=None):
     parser.add_argument(
         "--input", type=str, required=True, help="Broadband flux NetCDF input file"
     )
-    parser.add_argument("--output-dir", type=str, default="figures/products/broadband_flux")
+    parser.add_argument(
+        "--output-dir", type=str, default="figures/abi_proxy/products/broadband_flux"
+    )
     parser.add_argument("--lambda-center", type=float, default=-106)
     args = parser.parse_args(argv)
 

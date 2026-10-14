@@ -13,7 +13,9 @@ class BroadbandFluxCLITests(unittest.TestCase):
         input_file = "data/broadband_flux/broadband_flux_271_res2km.nc"
         with patch.object(plot_broadband_flux, "plot_broadband_flux") as plot:
             plot_broadband_flux.main(["--input", input_file])
-        plot.assert_called_once_with(input_file, "figures/products/broadband_flux", -106)
+        plot.assert_called_once_with(
+            input_file, "figures/abi_proxy/products/broadband_flux", -106
+        )
 
     def test_renamed_input_and_plot_options(self):
         with patch.object(plot_broadband_flux, "plot_broadband_flux") as plot:

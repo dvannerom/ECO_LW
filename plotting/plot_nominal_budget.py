@@ -18,8 +18,12 @@ from uncertainty import check_provenance
 from plot_n_components import plot_n_components
 
 
-def plot_gmm_diagnostics(selection, diagnostics_csv, settings):
-    """Combine per-seed score variation and bootstrap stability by component count."""
+def plot_gmm_diagnostics(selection, diagnostics_csv, settings, output=None):
+    """Combine held-out scores, occupancy and bootstrap stability by component count.
+
+    ``selection["components"]`` marks the reviewed K; ``None`` omits the marker
+    (K-independent review figure).
+    """
     with Path(diagnostics_csv).open(newline="") as handle:
         diagnostic_rows = {
             int(row["n_components"]): row for row in csv.DictReader(handle)
@@ -36,9 +40,11 @@ def plot_gmm_diagnostics(selection, diagnostics_csv, settings):
                          yerr=errors, marker="o", label=f"Seed {seed}")
         axes[1].plot(counts, [100*row["minimum_occupancy"] for row in candidates],
                      marker="o", label=f"Seed {seed}")
-    for axis in axes:
-        axis.axvline(selection["components"], color="black", linestyle="--",
-                     label=f"Manual nominal: {selection['components']}")
+    chosen = selection.get("components")
+    for axis in axes[:2]:
+        if chosen is not None:
+            axis.axvline(chosen, color="black", linestyle="--",
+                         label=f"Reviewed K: {chosen}")
         axis.set_xlabel("Number of GMM components")
         axis.legend()
     axes[0].set_ylabel("Held-out mean log likelihood (day-based SE)")
@@ -48,16 +54,17 @@ def plot_gmm_diagnostics(selection, diagnostics_csv, settings):
     ari_std = [float(diagnostic_rows[count]["ari_std"]) for count in counts]
     axes[2].errorbar(counts, ari_min, yerr=ari_std, marker="o", capsize=4,
                      color="tab:purple")
-    axes[2].axvline(selection["components"], color="black", linestyle="--",
-                    label=f"Manual nominal: {selection['components']}")
+    if chosen is not None:
+        axes[2].axvline(chosen, color="black", linestyle="--",
+                        label=f"Reviewed K: {chosen}")
+        axes[2].legend()
     axes[2].set_xlabel("Number of GMM components")
     axes[2].set_ylabel("Minimum bootstrap ARI (error bars: repeat SD)")
     axes[2].set_ylim(-0.05, 1.05)
-    axes[2].legend()
-    figure.suptitle(
-        "Spectral-only ABI classifier: seed variability and bootstrap stability"
-    )
-    figure.savefig(Path(settings["diagnostic_figure_dir"])/"gmm_stability.png", dpi=160)
+    figure.suptitle("Spectral-only ABI classifier: held-out scores and bootstrap stability")
+    output = Path(output or Path(settings["diagnostic_figure_dir"])/"gmm_stability.png")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output, dpi=160)
     plt.close(figure)
 
 
