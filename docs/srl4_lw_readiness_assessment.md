@@ -33,12 +33,12 @@ every local input and generated output.
   ECO*, ESA-EOPSM-ECO-RP-5024, Issue 1.0, 12 June 2026. Mission-level SRL4
   self-assessment: Appendix A, pp.122-125.
 
-## Current evidence update (2026-10-06)
+## Current evidence update (2026-10-09)
 
 The dated audit below describes the earlier production and noise-free
 spectral/angular branches. Subsequent opt-in workflows now execute radiometric
-noise, ABI spatial processing, assignment stress, training/evaluation
-convergence, and sparse/noisy ECO geometry experiments. The scene-conditioned
+noise, ABI spatial processing, scene assignment, production-aligned
+model-choice sensitivities, and sparse/noisy ECO geometry experiments. The scene-conditioned
 nominal budget additionally uses a spectral-only ABI classifier, grouped
 held-out Sunny scene ADMs/N2BC, and exact-boundary 4-100 um truth.
 
@@ -51,11 +51,25 @@ registration, temporal evolution, independent validation, model-training/library
 discrepancy, or mission sampling/stability terms. It is not a complete mission
 budget or a compliance assessment.
 
-The [README](../README.md#scene-conditioned-nominal-uncertainty-budget) documents
+The default Snakemake `all` target now includes configured ABI narrowband,
+daily broadband, and monthly products; the production-aligned ABI/Sunny
+sensitivity study; the conditional ECO/Sunny nominal budget; and ECO
+simulation evidence. Each sensitivity variant changes one production choice
+(K+-1 taxonomy, ADM library/form, N2B form) and is paired over every native
+pixel of the configured days and over monthly 10 km means, so model-choice
+sensitivities are now measured on the complete ABI products. They are
+sensitivities, not a monthly uncertainty: sampling, calibration and
+validation terms remain open. The nominal budget retains its transfer
+and independence hypotheses and is not propagated over the ABI production
+products. The ABI chain's inclusion in `all` demonstrates the workflow; it
+does not make ABI uncertainties ECO estimates or establish monthly uncertainty.
+
+The [technical reference](../TECHNICAL_DETAILS.md#scene-conditioned-nominal-uncertainty-budget) documents
 the current configuration, assumptions, results and explicit target. Small
 nominal reports and diagnostics are versioned as evidence snapshots; bulk inputs,
 caches, residual arrays and application models remain external/local. The
-nominal budget is separate from the default registry and its historical panel.
+nominal budget is registered in the default assessment, distinct from
+production-product uncertainty and its historical panel.
 
 ## Historical workflow purpose audit (2026-10-04)
 
@@ -70,13 +84,13 @@ channels is a hypothesis to test, not a conclusion from ABI agreement.
 
 | Deliverable or term | Implementation/evidence | Remaining limitation or requirement link |
 |---|---|---|
-| Complete ABI chain | `all_goes_proxy` reaches preprocessing, GMM scene ID, scene ADM fitting, corrected BTs, broadband flux, and aggregation. A dry run found all requested products present. | Default `all` stops ABI at corrected narrowband BTs. Existence of outputs does not validate physical correctness; two rules lack Snakemake provenance. |
+| Complete ABI chain | `all_goes_proxy` reaches preprocessing, GMM scene ID, scene ADM fitting, corrected BTs, broadband flux, and aggregation. A dry run found all requested products present. | As of the 2026-10-09 integration, default `all` also requests these production outputs. Existence of outputs does not validate physical correctness; two rules lack Snakemake provenance. |
 | Angular-to-flux conversion | ABI scene fits and Sunny per-scene/channel retrieval use the repository ADM form. | Normalization defect corrected in code with known-profile regression checks; existing products and ObsReq 15 scores require regeneration. |
 | Spectral reconstruction | ECO true-band-flux N2BC has grouped held-out predictions, bias, scatter, and RMSE. | Conditional on the Sunny library and assumed SRFs; ObsReq 16 confidence convention is unresolved. ABI coefficient fitting reports training-set error only. |
 | ECO multi-view advantage | Sunny supplies per-scene directional radiances; current retrieval uses 15 noise-free views including 55 degrees. | No representative N=1..20 experiment, N=1 prior/fallback, noise propagation, or matched ABI/ECO comparison. ObsReq 12/15 and MeasReq 8. |
 | ECO channel advantage | Idealized SRFs include smooth-edge overlap at adjacent band boundaries. | This is not measured instrument overlap or an isolated overlap-benefit experiment; channel covariance is not propagated. MeasReq 8 and ObsReq 16/17. |
 | ABI ADM transfer | Summary retains channel/scene/day sources and requirement caveats. | Between-day spread of scene-average fits is not within-scene pixel-level population spread and is not an ECO prior width. ObsReq 15/17. |
-| Scene ID, CTH/parallax, co-registration | Proxy algorithms exist. | No quantified ECO flux-error term or validated scene/channel/geometry transfer. ObsReq 12/15/17. |
+| Scene ID, CTH/parallax, co-registration | Proxy algorithms exist. Since 2026-10-09, production and the nominal budget share one spectral-only GMM, with K manually reviewed and gated (`config/scene_taxonomy.yaml`); the K±1 structural sensitivity is registered and its flux impact measured on complete daily/monthly ABI products. | No quantified ECO flux-error term or validated scene/channel/geometry transfer. ObsReq 12/15/17. |
 | Instrument noise/calibration and WFOV anchoring | Mission requirements are recorded. | No propagated ECO measurement covariance or anchoring residual in the chain. MeasReq 8/9, ObsReq 14/15. |
 | Monthly/seasonal products and stability | ABI aggregation averages the configured daily samples and saves difference variability. | Not a full diurnal monthly mean or an ECO sampling/stability uncertainty. ObsReq 8/9/10/11. |
 | Independent absolute validation | CERES is identified as an evidence source. | No CERES comparison in the inspected DAG. East-West agreement cannot detect shared error or establish absolute accuracy. ObsReq 10/15. |

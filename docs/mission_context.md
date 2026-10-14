@@ -64,6 +64,43 @@ Keep this file updated whenever new mission information arrives.
 
 ## 1a. ECO_LW evaluation framework
 
+- [user 2026-10-11] Determine the GMM component count from ABI observations:
+  angular coverage and other component-selection diagnostics must evaluate
+  ABI data, not Sunny simulations. Apply the selected ABI-trained GMM to Sunny
+  afterward to assign scenes and weight simulation files by ABI scene occurrence.
+- [user 2026-10-09] ECO_LW is intended to produce iterative first results
+  toward the target ECO mission goals, not to claim a final or complete mission
+  uncertainty. The current subgoal is to build the most complete and
+  well-justified **ECO longwave-only uncertainty budget** possible using GOES
+  ABI observations and Sunny simulations, with each estimate linked to the
+  relevant RfMA requirements and bounded by its evidence and hypotheses.
+- [user 2026-10-09] This work has two connected parts:
+  1. Demonstrate the general processing approach on GOES ABI: convert ABI
+     narrowband radiances to broadband daily and monthly flux products, derive
+     narrow-to-broadband (N2B) coefficients from Sunny radiances convolved
+     with ABI channel responses, and estimate, identify, and propagate
+     uncertainties through the production stages and as far toward the
+     upper-level products as evidence permits.
+  2. Assess which parts of that production workflow and its uncertainty
+     evidence apply to ECO, which do not, and what must change to make a
+     defensible ECO estimate. Changes may include convolving Sunny radiances
+     with ECO channel responses and repeating affected N2B or uncertainty
+     studies. Record transfer assumptions and requirement traceability.
+- [user 2026-10-09] The ECO-uncertainty branch need not generate an
+  end-to-end, spatially resolved ECO flux product where the required ECO
+  observations or spatial fields do not exist. It may still derive
+  ECO-relevant uncertainty estimates from simulations or transferred evidence
+  under explicit hypotheses. Its scope therefore differs from the complete
+  ABI production branch; this is a difference in available evidence and
+  product feasibility, not a competing scientific objective.
+- [derived 2026-10-09] The intended architecture is one traceable assessment
+  workflow with connected ABI-production and ECO-translation branches, sharing
+  applicable methods, provenance, uncertainty definitions, and RfMA links.
+  This is the target direction; it does not imply that the current DAG already
+  propagates every uncertainty to every ABI product or has a complete ECO
+  uncertainty budget. Report supported components and conditional subtotals
+  with their assumptions, and leave unsupported terms explicit rather than
+  presenting a global upper-level uncertainty or compliance claim.
 - [user 2026-10-04] ECO_LW must implement the full ABI narrowband LW
   radiance-to-broadband-flux workflow as a processing demonstration contributing
   to the scoped SRL4 feasibility case for ECO's similar LW processing design.
@@ -105,7 +142,8 @@ Keep this file updated whenever new mission information arrives.
   parameters with simulation inputs where those are the relevant basis, such as
   narrowband-to-broadband reconstruction. It should not be only an ECO spectral
   assessment, nor should ABI's production chain stand in for ECO performance.
-- [derived 2026-10-01] The default DAG follows two evidence branches:
+- [historical derived 2026-10-01; status updated 2026-10-09] The DAG was
+  initially described as two evidence branches:
   (1) ABI proxy preprocessing -> GMM scene ID -> scene ADMs -> ABI narrowband
   brightness-temperature inputs for GOES-specific N2BC, and (2) GERB/Clerbaux
   spectra that branch into two independent ECO analyses: (2a) integrate true
@@ -118,9 +156,72 @@ Keep this file updated whenever new mission information arrives.
   mission's full N=1..20 geometry/noise distribution.
   These branches remain separate at the N2BC boundary: ABI channel fluxes are
   not ECO channel fluxes, so ECO coefficients must not be applied to ABI data.
-  The complete ABI-channel N2BC/monthly chain remains available as the explicit
-  `all_goes_proxy` comparator. The default DAG does not claim a combined
-  per-pixel ECO broadband product or total propagated uncertainty yet.
+  As of 2026-10-09, the intended default `all` target includes the complete
+  configured ABI daily/monthly production chain, the production-aligned
+  ABI/Sunny sensitivity study, the conditional ECO/Sunny nominal budget,
+  and the shared evidence registry alongside ECO simulation evidence.
+  `all_goes_proxy` remains a production-only convenience target. (Superseded
+  later on 2026-10-09: sensitivity variants are now paired over all daily
+  products and monthly 10 km means; see the production-aligned entry below.)
+  The conditional nominal budget is not propagated over the ABI production
+  products. No spatially resolved ECO
+  broadband product or complete ECO uncertainty is claimed.
+- [user 2026-10-09] The default assessment should run full configured ABI
+  production and supported uncertainty studies together, while maintaining a
+  distinct ECO-translation branch for estimates requiring ECO channel
+  responses, mission geometry, or simulation evidence.
+- [user 2026-10-09] Scene-taxonomy decision (implemented 2026-10-09, Option A:
+  ABI production uses the shared nominal-full `spectral_gmm.joblib`; aligning
+  the sensitivity study is deferred):
+  production, sensitivity and nominal-budget branches must share one scene
+  taxonomy using the ten spectral-only features (six channel averages, four
+  BT differences), so ABI pixels and Sunny columns are classified
+  identically. Texture (5x5/9x9 local SD) is retained only as a diagnostic or
+  sensitivity. The number of GMM components is a manual, documented choice
+  made once per taxonomy definition from full-population, held-out-day
+  diagnostics (statistical, seed-stability and flux-impact criteria), recorded
+  in a versioned configuration file tied to the diagnostics hash; the
+  workflow must not silently default it. Neighbouring K values are to be
+  propagated as a structural taxonomy-choice uncertainty term.
+- [derived 2026-10-09] Implementation: `config/scene_taxonomy.yaml` (K,
+  rationale, reviewer, date, diagnostics-CSV SHA-256), gate
+  `scripts/check_scene_taxonomy.py` -> `data/models/scene_taxonomy_gate.json`,
+  K-independent review target `gmm_selection_diagnostics`. The K+-1 deltas are
+  registered as `scene_taxonomy_assessment` in the uncertainty registry; their
+  flux impact is measured by the production-aligned K+-1 variants. K is currently unselected
+  pending the full-population HPC diagnostics.
+- [derived 2026-10-09] Production-aligned sensitivity study (replaces the
+  sampled first-draft sensitivity, the convergence study and the ABI
+  assignment-stress curve, all retired). Each variant changes exactly one
+  choice of the `all` production configuration (pooled held-in regularized
+  ADM `adm_k{K}`, VZA <=70 deg, cubic float64 N2B, shared spectral GMM).
+  ABI variants (K-1/K+1 taxonomy, daily ADM, quadratic ADM, quadratic N2B) are
+  paired over every native pixel of the 25 configured days after an exact
+  closure check against the written `broadband_flux` products (<=0.01 W/m2),
+  reported separately on held-in and held-out days, and as monthly 10 km
+  pairing-weighted mean differences. Sunny/ECO variants (regime-stratified,
+  robust Huber and cubic N2BC; per-file and quadratic ADM; K+-1) are taken
+  around the nominal grouped held-out estimator, which must reproduce the
+  nominal residuals within 1e-6 W/m2. Radiometric, spatial and assignment
+  terms are single-source from the nominal budget. Variants are model-choice
+  sensitivities, not summed and not uncertainties of record; ABI variants
+  describe ABI geometry/channels and transfer to ECO only through the matching
+  Sunny/ECO variant. The ECO multi-view geometry diagnostic now uses the
+  nominal Sunny library and fold models.
+- [derived 2026-10-09] Before this decision, production used 22 features
+  (spectral + texture) with K=7 while the nominal budget used a spectral-only
+  GMM with K=6; the two branches therefore relied on different taxonomies.
+- [derived 2026-10-09] The default `all` assessment registers the full-mode
+  conditional ECO/Sunny nominal budget with its transfer and independence
+  hypotheses. Its estimate is not interchangeable with uncertainty propagated
+  over the ABI daily/monthly production products.
+- [derived 2026-10-09] The first integration registers daily narrowband and
+  broadband ABI products, monthly ABI fluxes, and sampled ABI/Sunny sensitivity
+  evidence in the same DAG and uncertainty report. This is an initial workflow
+  integration, not evidence that all product-level uncertainty propagation is
+  complete. Daily propagation over complete configured products and monthly
+  uncertainty remain explicit gaps pending suitable paired experiments and
+  justified spatial/temporal covariance treatment.
 - [derived] This is a **target-centric, evidence-fused assessment**, not a
   choice between GOES and ECO processing pipelines. Estimates from different
   sources must not be blindly averaged: retain each source, uncertainty term,
@@ -410,10 +511,10 @@ RfMA states it.
   **GMM separating the observations into 10 scene classes**.
 - [user 2026-09-30] **The 10 classes are superseded.** That figure predates the
   improved GMM diagnostics (`scripts/find_nComponents.py`). Current status: do
-  NOT use the lowest n_components candidate; **use 6 or 7**. The current
-  `config.yaml` default is now **7**, matching the locally selected
-  `selected_n_components.json`; this count drives the default ABI proxy
-  scene-ID branch.
+  NOT use the lowest n_components candidate; **use 6 or 7**. Superseded on
+  2026-10-09 by the shared-taxonomy gate (§ decisions above): K is now
+  recorded manually in `config/scene_taxonomy.yaml`; the former
+  `selected_n_components.json` is obsolete.
 - [RfMA §4.3.3 p.42] Scene-ID error propagation is **non-linear** (a wrong class
   selects a wrong ADM) and is considered potentially more consequential than the
   narrow-to-broadband regression error. Window channels used for scene ID
@@ -478,6 +579,10 @@ RfMA states it.
   **goal** 5–16 µm set captures substantially more. This out-of-band term is
   water-vapour-regime dependent and hence largely invisible to the disk-mean
   radiometer anchor.
+- [user 2026-10-13] **Workflow channel scenarios reduced to the RfMA goal
+  (`rfma_goal_6`) and threshold (`rfma_threshold_6`) sets only.** The two
+  previously supplied ECO SRF candidates (envelope / open-tail variants) are
+  removed from computation, outputs and figures.
 - Housekeeping: the file has an unguarded module-level write loop into `out/`;
   must go under `if __name__ == "__main__":` before being imported.
 
@@ -575,11 +680,12 @@ Resolved by the user on 2026-09-30:
   (2016); (b) carry the repo-vs-RfMA form difference as a quantified ADM
   model-form error term; (c) never quote repo `b` against RfMA `a` without
   conversion (roles are also swapped).
-- **D4 — scene count. RESOLVED: 7** for the current ABI proxy workflow, matching
-  the local `selected_n_components.json` result. Six remains an acceptable
-  alternative for future sensitivity studies; neither the RfMA's legacy 10 nor
-  the lowest candidate should be chosen automatically. The model path follows
-  the selected component count and training-file list.
+- **D4 — scene count. RESOLVED (procedure): manual K** for the shared
+  spectral-only taxonomy, recorded in `config/scene_taxonomy.yaml` after
+  review of full-population diagnostics and enforced by the scene-taxonomy
+  gate. 6 or 7 remain the expected range; neither the RfMA's legacy 10 nor
+  the lowest candidate is chosen automatically. K+-1 is a registered
+  structural sensitivity. (The earlier K=7 texture-feature model is obsolete.)
 - **D5 — constellation size. RESOLVED: 2 satellites is the baseline and
   preferred, but a 1-satellite configuration is still live.** So the
   1-vs-2 sampling trade remains a worthwhile deliverable: quantify the monthly
@@ -593,6 +699,19 @@ Resolved by the user on 2026-09-30:
   "without any scene stratification", against **ObsReq 16 = 0.84 % for OLR**.
   Scene stratification of the NTB regression is the obvious lever and an
   immediately actionable target for this repository.
+- [user 2026-10-13] **ECO Sunny N2BC uses ABI-population weighting only.**
+  The former unweighted clear/cloud-stratified and unstratified training modes
+  are replaced by one global N2BC fit in which each Sunny file is weighted by
+  the ABI-pixel fraction of its majority-vote ABI-GMM scene divided by the
+  Sunny file count of that scene (same weights as the nominal budget). Clear/
+  cloud stratification was dropped because it relies on Sunny truth not
+  available operationally. Weighted results feed bias/SD/RMSE.
+- [derived 2026-10-13] ABI-weighted held-out N2BC-only k=2 (rfma_goal_6):
+  2.25 % (deg 1), 0.94 % (deg 2), 0.83 % (deg 3); rfma_threshold_6: 1.47 %
+  (deg 2), 1.37 % (deg 3). Goal cubic just meets ObsReq 16 (0.84 %).
+  Caveat: effective sample size ~418 of 4,620 files, because ABI scene 6
+  (11.5 % of ABI pixels) is represented by only 9 Sunny files; the weighted
+  statistics are therefore sensitive to those few spectra.
 
 ## 13. Standing conclusions (uncertainty framework)
 
@@ -602,7 +721,7 @@ Sunny-derived assignment probabilities. The current nominal configuration uses
 manually specified six components, ABI-pixel-derived assignment transitions
 included under assumed ECO response transfer, and the independent spatial proxy.
 Its combined RMSE is 1.9930 W/m2; the paired Sunny subtotal is 1.9560 W/m2.
-See the [current README summary](../README.md#current-uncertainty-status-2026-10-06).
+See the [current uncertainty summary](../TECHNICAL_DETAILS.md#current-uncertainty-status-2026-10-09).
 Earlier excluded-assignment and 1.931 W/m2 results are not the current budget.
 
 - [user 2026-10-06] The full nominal-budget run must use all 25 available ABI
@@ -631,6 +750,14 @@ Earlier excluded-assignment and 1.931 W/m2 results are not the current budget.
   Reduction-order roundoff may affect convergence or near-tied assignments;
   numerical equivalence is tested, not bitwise-identical complete mission
   budgets. This is an execution change, not new uncertainty evidence.
+- [derived 2026-10-09] Full nominal GMM execution now schedules expensive
+  component counts first and redistributes a shared CPU budget between
+  independent starts at EM-pass boundaries, up to 32 compute workers per fit.
+  Every eligible training pixel, initial seed, full covariance, regularization,
+  ordered chunk reduction and convergence criterion is retained. Complete
+  actual-data subset fits matched bitwise across tested worker allocations;
+  this is not validation of a new full-population uncertainty budget or a
+  guaranteed full-run speedup.
 
 - [user 2026-10-06] Expand nominal four-panel GMM diagnostics to every
   component count 2 through 15 inclusive. Spatial diagnostics must contain
