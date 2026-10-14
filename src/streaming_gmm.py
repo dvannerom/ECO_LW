@@ -10,8 +10,12 @@ from collections import deque
 from concurrent.futures import ProcessPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import nullcontext
+from dataclasses import dataclass
+from functools import lru_cache
 import multiprocessing
 from numbers import Integral, Real
+from pathlib import Path
+import time
 import warnings
 
 import numpy as np
@@ -28,6 +32,87 @@ from threadpoolctl import threadpool_limits
 _FEATURES = 10
 _CHUNK_ROWS = 4096
 _REG_COVAR = 1e-6
+
+
+class ProgressCallbackError(Exception):
+    """Telemetry failure, not a numerical failed initialization."""
+
+
+def _emit_progress(callback, event):
+    if callback is not None:
+        try:
+            callback(event)
+        except RuntimeError as error:
+            raise ProgressCallbackError("GMM progress callback failed") from error
+
+
+@dataclass(frozen=True)
+class MappedChunk:
+    path: str
+    start: int
+    stop: int
+    rows: int
+    dimensions: int
+    identity: tuple
+
+
+@lru_cache(maxsize=32)
+def _mapped_file(path, rows, dimensions, identity):
+    stat = Path(path).stat()
+    if (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns) != identity:
+        raise ValueError(f"Transformed feature cache changed before mapping: {path}")
+    values = np.load(path, mmap_mode="r", allow_pickle=False)
+    if values.dtype != np.float64 or values.shape != (rows, dimensions):
+        raise ValueError(f"Invalid transformed feature cache: {path}")
+    return values
+
+
+class MappedTrainingData:
+    """Immutable float64 PCA files in population order; no array IPC.
+
+    File mappings share the OS page cache. Scratch storage remains bounded by
+    chunk size, not file size. Files must not change during fitting.
+    """
+
+    def __init__(self, paths, batch_rows, dimensions):
+        self.batch_rows = _positive_integer("batch_rows", batch_rows)
+        self.dimensions = _positive_integer("dimensions", dimensions)
+        self.files = []
+        for path in paths:
+            path = str(Path(path).resolve())
+            values = np.load(path, mmap_mode="r", allow_pickle=False)
+            if (values.dtype != np.float64 or values.ndim != 2
+                    or values.shape[1] != self.dimensions):
+                raise ValueError(f"Invalid transformed feature cache: {path}")
+            stat = Path(path).stat()
+            identity = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+            self.files.append((path, len(values), identity))
+        self.files = tuple(self.files)
+        self.rows = sum(rows for _, rows, _ in self.files)
+
+    def references(self, chunk_rows):
+        chunk_rows = _chunk_rows(chunk_rows)
+        for path, rows, identity in self.files:
+            for batch_start in range(0, rows, self.batch_rows):
+                batch_stop = min(rows, batch_start + self.batch_rows)
+                for start in range(batch_start, batch_stop, chunk_rows):
+                    yield MappedChunk(path, start, min(batch_stop, start + chunk_rows),
+                                      rows, self.dimensions, identity)
+
+    def batches(self):
+        for path, rows, identity in self.files:
+            values = _mapped_file(path, rows, self.dimensions, identity)
+            for start in range(0, rows, self.batch_rows):
+                yield values[start:start + self.batch_rows]
+
+
+def _mapped_chunk_statistics(reference, model):
+    chunk = _mapped_file(reference.path, reference.rows, reference.dimensions,
+                         reference.identity)[
+        reference.start:reference.stop]
+    if not np.isfinite(chunk).all():
+        raise ValueError(f"Non-finite transformed feature cache: {reference.path}")
+    return _chunk_statistics(chunk, model)
 
 
 def _positive_integer(name, value):
@@ -284,14 +369,20 @@ def _chunk_statistics(chunk, model):
 def _bounded_statistics(chunks, model, executor, workers):
     """At most workers submitted chunks; consume in input order, not finish order.
 
-    Pickling is limited to one owned float64 chunk and O(K*d**2) model metadata
-    per task. Copy before submission prevents asynchronous serialization from
-    observing a reused producer buffer. Neither factories nor populations are
-    sent to processes. Persistent processes are reused for all EM passes.
+    MappedChunk tasks send offsets, not feature arrays. General array callers
+    copy before submission so asynchronous serialization cannot observe a
+    reused producer buffer. Persistent processes are reused for all EM passes.
     """
+    def submit(chunk):
+        if isinstance(chunk, MappedChunk):
+            return executor.submit(_mapped_chunk_statistics, chunk, model)
+        return executor.submit(_chunk_statistics, chunk.copy(), model)
+
     if executor is None:
         for chunk in chunks:
-            yield _chunk_statistics(chunk, model)
+            function = (_mapped_chunk_statistics if isinstance(chunk, MappedChunk)
+                        else _chunk_statistics)
+            yield function(chunk, model)
         return
     pending = deque()
     chunks = iter(chunks)
@@ -300,12 +391,12 @@ def _bounded_statistics(chunks, model, executor, workers):
             chunk = next(chunks, None)
             if chunk is None:
                 break
-            pending.append(executor.submit(_chunk_statistics, chunk.copy(), model))
+            pending.append(submit(chunk))
         while pending:
             yield pending.popleft().result()
             chunk = next(chunks, None)
             if chunk is not None:
-                pending.append(executor.submit(_chunk_statistics, chunk.copy(), model))
+                pending.append(submit(chunk))
     finally:
         for future in pending:
             future.cancel()
@@ -317,6 +408,7 @@ def _bounded_statistics(chunks, model, executor, workers):
 def _expectation_statistics(
     batches, scaler, pca, model, count, chunk_rows=None,
     transformed_batches=None, executor=None, workers=1,
+    mapped_data=None, chunk_progress=None,
 ):
     """Return weighted counts, means, centered scatters and average log density.
 
@@ -328,11 +420,19 @@ def _expectation_statistics(
     means = np.zeros((components, dimensions))
     scatters = np.zeros((components, dimensions, dimensions))
     log_likelihood = 0.0
-    chunks = _training_chunks(
-        batches, scaler, pca, count, chunk_rows, transformed_batches,
-    )
+    chunks = (mapped_data.references(chunk_rows) if mapped_data is not None
+              else _training_chunks(
+                  batches, scaler, pca, count, chunk_rows, transformed_batches))
+    processed = 0
+    sizes = deque()
+    def counted_chunks():
+        for chunk in chunks:
+            sizes.append(chunk.stop - chunk.start if isinstance(chunk, MappedChunk)
+                         else len(chunk))
+            yield chunk
+
     for new_masses, new_means, new_scatters, likelihood in _bounded_statistics(
-        chunks, model, executor, workers,
+        counted_chunks(), model, executor, workers,
     ):
         log_likelihood += likelihood
         for component in range(components):
@@ -340,6 +440,11 @@ def _expectation_statistics(
                 masses[component], means[component], scatters[component],
                 new_masses[component], new_means[component], new_scatters[component],
             )
+        processed += sizes.popleft()
+        if chunk_progress is not None:
+            chunk_progress(processed)
+    if processed != count:
+        raise ValueError(f"Training population changed: expected {count}, got {processed}")
     objective = log_likelihood / count
     if not np.isfinite(objective):
         raise RuntimeError("Non-finite Gaussian-mixture likelihood.")
@@ -367,6 +472,7 @@ def fit_streaming_gmm(
     batches, components, seed, initializations=2, max_iter=300, tol=1e-3,
     initialization_index=None, progress_callback=None,
     *, chunk_rows=None, workers=1, preprocessor=None, transformed_batches=None,
+    statistics_scheduler=None, mapped_data=None, event_callback=None,
 ):
     """Fit a replayable (n, 10) feature stream and return an sklearn Pipeline.
 
@@ -385,6 +491,10 @@ def fit_streaming_gmm(
     ``transformed_batches`` optionally supplies a replayable callable of finite
     arrays with shape (n, pca.n_components_), e.g. float64 read-only mmap slices.
     It requires ``preprocessor`` and bypasses *all* raw feature reads/transforms.
+    ``mapped_data`` is an alternative MappedTrainingData source. It preserves
+    chunk ordering while dispatching only file offsets to process workers.
+    ``event_callback`` receives per-pass timing/progress dictionaries; callback
+    failures propagate and must not be treated as numerical failed starts.
     The caller verifies cache provenance and identical row order; this function
     validates dimensions, finite values and row counts but cannot prove contents
     match the raw features. The returned Pipeline still accepts raw 10-D rows.
@@ -408,10 +518,24 @@ def fit_streaming_gmm(
     + workers * K d**2), independent of N, in addition to process-library overhead.
     Only bounded chunks are pickled, with at most workers tasks in flight;
     sufficient statistics are merged deterministically in input order.
+    ``statistics_scheduler`` optionally leases a shared executor and worker
+    count through ``iteration()`` for each complete EM pass. It requires
+    ``workers=1``; the scheduler, not this fit, owns the shared process pool.
     Data must be replayable and unchanged across passes;
     changed row counts are checked, but input contents are not checksummed.
     """
     workers = _positive_integer("workers", workers)
+    if statistics_scheduler is not None and workers != 1:
+        raise ValueError("statistics_scheduler requires workers=1")
+    if mapped_data is not None:
+        if not isinstance(mapped_data, MappedTrainingData):
+            raise TypeError("mapped_data must be MappedTrainingData")
+        if preprocessor is None or transformed_batches is not None:
+            raise ValueError("mapped_data requires preprocessor and no transformed_batches")
+        count, _, pca = _validate_preprocessor(preprocessor)
+        if mapped_data.rows != count or mapped_data.dimensions != pca.n_components_:
+            raise ValueError("Mapped training population or dimensions do not match preprocessing")
+        transformed_batches = mapped_data.batches
     chunk_rows = _chunk_rows(chunk_rows)
     context = (
         ProcessPoolExecutor(
@@ -423,15 +547,48 @@ def fit_streaming_gmm(
         return _fit_streaming_gmm(
             batches, components, seed, initializations, max_iter, tol,
             initialization_index, progress_callback, chunk_rows, workers,
-            preprocessor, transformed_batches, executor,
+            preprocessor, transformed_batches, executor, statistics_scheduler,
+            mapped_data, event_callback,
         )
 
 
 def _fit_streaming_gmm(
     batches, components, seed, initializations, max_iter, tol,
     initialization_index, progress_callback, chunk_rows, workers,
-    preprocessor, transformed_batches, executor,
+    preprocessor, transformed_batches, executor, statistics_scheduler=None,
+    mapped_data=None, event_callback=None,
 ):
+    def expectation(model, start, iteration):
+        allocation = (statistics_scheduler.iteration()
+                      if statistics_scheduler is not None else nullcontext((executor, workers)))
+        with allocation as (pass_executor, pass_workers):
+            started = time.monotonic()
+            last_report = started
+            identity = {"initialization": start, "iteration": iteration,
+                        "population": count, "workers": pass_workers}
+            def emit(event, **fields):
+                _emit_progress(event_callback, {"event": event, **identity, **fields})
+
+            def progress(processed):
+                nonlocal last_report
+                now = time.monotonic()
+                if now - last_report >= 30:
+                    emit("pass_progress", processed_pixels=processed,
+                         duration_seconds=now - started,
+                         pixels_per_second=processed / (now - started))
+                    last_report = now
+
+            emit("pass_started", processed_pixels=0)
+            result = _expectation_statistics(
+                batches, scaler, pca, model, count, chunk_rows,
+                transformed_batches, pass_executor, pass_workers,
+                mapped_data, progress if event_callback is not None else None,
+            )
+            duration = time.monotonic() - started
+            emit("pass_completed", processed_pixels=count, duration_seconds=duration,
+                 pixels_per_second=count / duration, mean_log_likelihood=result[-1])
+            return result
+
     if not callable(batches):
         raise TypeError("batches must be a callable returning a fresh iterable.")
     for name, value in (
@@ -486,19 +643,19 @@ def _fit_streaming_gmm(
                 model, np.full(components, 1.0 / components), centers,
                 np.repeat(global_covariance[None, :, :], components, axis=0),
             )
-            masses, means, scatters, previous = _expectation_statistics(
-                batches, scaler, pca, model, count,
-                chunk_rows, transformed_batches, executor, workers,
-            )
+            masses, means, scatters, previous = expectation(model, start, 0)
             model.lower_bounds_ = []
             for iteration in range(1, max_iter + 1):
                 _maximization(model, masses, means, scatters, count)
-                masses, means, scatters, objective = _expectation_statistics(
-                    batches, scaler, pca, model, count,
-                    chunk_rows, transformed_batches, executor, workers,
-                )
+                masses, means, scatters, objective = expectation(model, start, iteration)
                 model.lower_bounds_.append(objective)
                 converged = abs(objective - previous) < tol
+                if event_callback is not None:
+                    _emit_progress(event_callback, {
+                        "event": "iteration_completed", "initialization": start,
+                        "iteration": iteration, "mean_log_likelihood": objective,
+                        "likelihood_change": objective - previous, "converged": converged,
+                    })
                 if (progress_callback is not None
                         and (iteration % 10 == 0 or converged or iteration == max_iter)):
                     progress_callback(start, iteration, objective, converged)

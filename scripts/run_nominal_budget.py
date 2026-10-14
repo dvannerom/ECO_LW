@@ -1,7 +1,6 @@
 """ABI-informed, grouped-held-out ECO uncertainty budget."""
 
 import argparse
-import csv
 import json
 import sys
 from pathlib import Path
@@ -14,12 +13,7 @@ import numpy as np
 import yaml
 from scipy.integrate import simpson
 from sklearn.model_selection import GroupKFold
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import adjusted_rand_score
 from itertools import combinations
-from netCDF4 import Dataset
 
 from abi_sunny_comparison import (
     abi_response_on_grid, convolve_abi_radiances, synthetic_brightness_temperature,
@@ -28,38 +22,47 @@ from abi_sunny_comparison import (
 from eco_spectral_response import load_channel_scenarios, channel_response_matrix
 from geometry_sensitivity import retrieve_geometry
 from nominal_budget import (
-    integrate_domain, file_scene, population_weights, fit_pooled_shape, library_flux, error_classes,
-    independent_budget_sum, lognormal_radiance,
+    integrate_domain, population_weights, fit_pooled_shape, library_flux, error_classes,
+    classify, fit_n2bc,
+    independent_budget_sum, lognormal_radiance,  # noqa: F401 lognormal_radiance is runner API
 )
-from run_sensitivity_convergence import collect_training, open_cache
-from scene_features import spectral_features_from_bt, SPECTRAL_CHANNEL_INDICES
-from radiometry import radiance_to_brightness_temperature
-from sensitivity import fit_gmm, planck_derivative, fit_scene_adm, abi_broadband
-from broadband import load_cubic_coefficients
+from scene_features import spectral_features_from_bt, SPECTRAL_CHANNEL_INDICES  # noqa: F401 runner API
+from sensitivity import planck_derivative, abi_broadband
 from average_resolution import block_average_chunk
-from find_nComponents import evaluate_candidate, evaluate_exact_candidate
 from uncertainty import build_provenance, check_provenance
+from nominal_provenance import (
+    configuration_identity as nominal_configuration_identity,
+    scoped_code_paths as nominal_scoped_code_paths,
+    provenance_code_paths as nominal_provenance_code_paths,
+)
 
-SETTINGS = ROOT/"config/nominal_budget.yaml"
+SETTINGS = ROOT/"config/nominal_budget_full.yaml"
 CONFIG_PATH = ROOT/"config.yaml"
+TAXONOMY_PATH = ROOT/"config/scene_taxonomy.yaml"
 
 
 def options():
+    from scene_taxonomy import load_scene_taxonomy
     with SETTINGS.open() as source:
         settings = yaml.safe_load(source)
     with CONFIG_PATH.open() as source:
         config = yaml.safe_load(source)
     if settings["schema_version"] != 1 or settings["noise_realizations"] < 2:
         raise ValueError("Unsupported nominal budget settings")
+    if "nominal_components" in settings:
+        raise ValueError("nominal_components moved to config/scene_taxonomy.yaml (selection.n_components)")
+    # Deliberately not a configuration hash: K-independent stages must stay
+    # current when the reviewed K changes; K-dependent outputs record the gate.
+    settings["scene_taxonomy_file"] = str(TAXONOMY_PATH)
+    settings["nominal_components"] = load_scene_taxonomy(TAXONOMY_PATH)["selection"]["n_components"]
     training, validation = settings["training_days"], settings["validation_days"]
     if (not training or len(validation) < 2 or set(training) & set(validation)
             or len(set(training)) != len(training) or len(set(validation)) != len(validation)):
         raise ValueError("Use unique disjoint training days and at least two validation days")
-    if settings.get("abi_mode", "sampled") not in ("sampled", "full"):
-        raise ValueError("abi_mode must be sampled or full")
-    if settings.get("abi_mode") == "full":
-        from nominal_streaming import validate_settings
-        validate_settings(settings, config)
+    if settings.get("abi_mode", "full") != "full":
+        raise ValueError("Only abi_mode: full is supported; the sampled tile-cache mode is retired")
+    from nominal_streaming import validate_settings
+    validate_settings(settings, config)
     return settings, config
 
 
@@ -70,18 +73,31 @@ def write(path, value):
         json.dump(value, target, indent=2, allow_nan=False)
 
 
-def provenance(inputs):
+def provenance(inputs, stage=None, identity=None, settings=None):
+    if stage is not None:
+        if settings is None:
+            settings, _ = options()
+        selected_identity = nominal_configuration_identity(stage, settings, identity)
+        return build_provenance(
+            root=ROOT,
+            code_paths=nominal_provenance_code_paths(stage, ROOT),
+            configuration_paths=(),
+            input_paths={str(i): Path(path) for i, path in enumerate(inputs)},
+            stage=stage,
+            configuration_identity=selected_identity,
+            scoped_code_paths=nominal_scoped_code_paths(stage, ROOT),
+        )
     return build_provenance(
         root=ROOT,
         code_paths=[Path(__file__), ROOT/"src/nominal_budget.py", ROOT/"src/geometry_sensitivity.py",
                     ROOT/"scripts/find_nComponents.py", ROOT/"scripts/average_resolution.py",
                     ROOT/"scripts/preprocess_data_ABI.py", ROOT/"src/broadband.py",
-                    ROOT/"scripts/run_sensitivity_convergence.py",
                     ROOT/"src/nominal_streaming.py", ROOT/"src/streaming_gmm.py",
+                    ROOT/"src/gmm_scheduler.py",
                     ROOT/"src/gmm_stability.py",
                     *[ROOT/f"src/{name}.py" for name in (
                         "abi_sunny_comparison", "eco_spectral_response", "sensitivity",
-                        "scene_features", "radiometry", "uncertainty", "adm", "adm_fitting",
+                        "scene_features", "scene_taxonomy", "radiometry", "uncertainty", "adm", "adm_fitting",
                         "spectral_response",
                     )]],
         configuration_paths=[SETTINGS, CONFIG_PATH, ROOT/"config/eco_channel_scenarios.yaml"],
@@ -89,188 +105,34 @@ def provenance(inputs):
     )
 
 
-def verify(path):
+def provenance_identity(stage, identity=None, settings=None):
+    """Return the exact identity expected by a stage freshness check."""
+    if settings is None:
+        settings, _ = options()
+    return nominal_configuration_identity(stage, settings, identity)
+
+
+def check_stage_provenance(metadata, stage, identity=None, settings=None):
+    """Check a provenance object or enclosing stage record against current settings."""
+    expected_identity = provenance_identity(stage, identity, settings)
+    if isinstance(metadata, dict) and "provenance" in metadata:
+        metadata = metadata["provenance"]
+    return check_provenance(
+        metadata, ROOT, expected_stage=stage,
+        expected_configuration_identity=expected_identity,
+    )
+
+
+def verify(path, stage=None, identity=None, settings=None):
     metadata = json.loads(Path(str(path)+".json").read_text())
-    freshness = check_provenance(metadata["provenance"], ROOT)
+    if stage is None:
+        freshness = check_provenance(metadata["provenance"], ROOT)
+    else:
+        freshness = check_stage_provenance(
+            metadata["provenance"], stage, identity=identity, settings=settings
+        )
     if freshness["status"] != "current":
         raise ValueError(f"Stale nominal budget input {path}: {freshness}")
-
-
-def cache_paths(settings, days):
-    return [Path(settings["cache_root"])/str(day) for day in days]
-
-
-def select_nominal_candidate(eligible, components):
-    """Select initialization at a manually configured count; never override it."""
-    matching = [row for row in eligible if row["components"] == components]
-    if not matching:
-        raise ValueError(f"Nominal GMM count {components} has no adequately occupied candidate")
-    return max(matching, key=lambda row: row["heldout_mean_log_likelihood"])
-
-
-def train(settings):
-    training = cache_paths(settings, settings["training_days"])
-    validation = cache_paths(settings, settings["validation_days"])
-    if set(training) & set(validation):
-        raise ValueError("ABI day leakage")
-    features = collect_training(training, settings["tiles_per_day"], settings["sample_points"],
-                                5, 42)["features"][:, :10]
-    validation_samples = [
-        collect_training([path], settings["tiles_per_day"],
-                         settings["sample_points"]//len(validation), 5, 73)["features"][:, :10]
-        for path in validation
-    ]
-    heldout = np.concatenate(validation_samples)
-    rows, candidates, assignments = [], {}, {}
-    for components in settings["components"]:
-        for seed in settings["seeds"]:
-            model = fit_gmm(features, components, seed, 2)
-            transformed = model[1].transform(model[0].transform(heldout))
-            likelihood = float(model[-1].score(transformed))
-            labels = model.predict(heldout)
-            counts = np.bincount(labels, minlength=components)
-            per_day = [float(model[-1].score(model[1].transform(model[0].transform(sample))))
-                       for sample in validation_samples]
-            row = {"components": components, "seed": seed, "heldout_mean_log_likelihood": likelihood,
-                   "heldout_day_log_likelihood": per_day,
-                   "heldout_counts": counts.tolist(), "minimum_occupancy": float(counts.min()/len(labels))}
-            rows.append(row)
-            if np.all(counts >= 100):
-                candidates[(components, seed)] = model
-                assignments[(components, seed)] = labels
-            print(f"Spectral GMM k={components}, seed={seed}: held-out likelihood {likelihood:.4f}", flush=True)
-    if not candidates:
-        raise ValueError("No occupied, converged GMM candidate")
-    eligible = [row for row in rows if (row["components"], row["seed"]) in candidates]
-    best = max(eligible, key=lambda row: row["heldout_mean_log_likelihood"])
-    day_se = float(np.std(best["heldout_day_log_likelihood"], ddof=1)/np.sqrt(len(validation)))
-    threshold = best["heldout_mean_log_likelihood"]-day_se
-    suggested = min(row["components"] for row in eligible
-                    if row["heldout_mean_log_likelihood"] >= threshold)
-    components = settings["nominal_components"]
-    selected = select_nominal_candidate(eligible, components)
-    seed = selected["seed"]
-    model = candidates[(components, seed)]
-    stability = [{
-        "seed_a": first, "seed_b": second,
-        "adjusted_rand": float(adjusted_rand_score(assignments[(components, first)],
-                                                  assignments[(components, second)])),
-    } for first in settings["seeds"] for second in settings["seeds"]
-       if first < second and (components, first) in assignments and (components, second) in assignments]
-    # Count complete cached eligible population, rather than the fitting sample.
-    population_counts = np.zeros(components, dtype=np.int64)
-    by_day = {}
-    for path in validation:
-        index, data = open_cache(path)
-        counts = np.zeros(components, dtype=np.int64)
-        for tile in range(settings["tiles_per_day"]):
-            valid = np.repeat(np.repeat(data["valid_blocks"][tile], 5, axis=0), 5, axis=1)
-            counts += np.bincount(model.predict(data["features"][tile][valid, :10]), minlength=components)
-        by_day[str(index["day"])] = counts.tolist()
-        population_counts += counts
-    output = Path(settings["output_dir"])
-    output.mkdir(parents=True, exist_ok=True)
-    path = output/"spectral_gmm.joblib"
-    joblib.dump({"model": model, "population": population_counts/population_counts.sum()}, path)
-    metadata = {
-        "provenance": provenance([*training, *validation]), "components": components, "seed": seed,
-        "selection": "Manually configured nominal count; best held-out initialization at that count",
-        "diagnostic_one_se_components": suggested,
-        "best_likelihood_components": best["components"], "day_standard_error": day_se,
-        "likelihood_threshold": threshold, "initialization_stability": stability,
-        "best_at_search_boundary": best["components"] == max(settings["components"]),
-        "heldout_log_density_p01": float(np.quantile(
-            model[-1].score_samples(model[1].transform(model[0].transform(heldout))), .01)),
-        "population_counts": population_counts.tolist(), "by_day": by_day,
-        "population_scope": "Eligible complete overlap tiles on four held-out days, equal native-pixel weight; not global climatology",
-        "selection_caution": "Held-out days used for selection, not an independent final classifier accuracy test; stability diagnostics retained",
-    }
-    write(str(path)+".json", metadata)
-    write(Path(settings["diagnostic_dir"])/"gmm_selection.json", {"candidates": rows, **metadata})
-
-
-def diagnostic_observations(records, planck):
-    """Adapt cached six-channel pairs to the existing nine-channel diagnostics."""
-    radiance = np.full((len(records["features"]), 2, 9), np.nan)
-    radiance[:, :, list(SPECTRAL_CHANNEL_INDICES)] = records["radiance"]
-    coefficients = np.full((2, 9, 4), np.nan)
-    coefficients[:, list(SPECTRAL_CHANNEL_INDICES)] = planck
-    return (records["angles"][:, 0], records["angles"][:, 1],
-            radiance[:, 0], radiance[:, 1], coefficients[0], coefficients[1])
-
-
-def diagnostics(settings):
-    """Reuse production component diagnostics on texture-free cached samples."""
-    training_paths = cache_paths(settings, settings["training_days"])
-    validation_paths = cache_paths(settings, settings["validation_days"])
-    training = collect_training(training_paths, settings["tiles_per_day"],
-                                settings["sample_points"], 5, 42)
-    train_features = training["features"][:, :10]
-    _, cache = open_cache(training_paths[0])
-    train_obs = diagnostic_observations(training, cache["planck"])
-    validation = []
-    for path in validation_paths:
-        records = collect_training([path], settings["tiles_per_day"],
-                                   settings["sample_points"]//len(validation_paths), 5, 73)
-        _, cache = open_cache(path)
-        validation.append((records["features"][:, :10], str(path),
-                           diagnostic_observations(records, cache["planck"])))
-    features = np.concatenate([entry[0] for entry in validation])
-    # Each day retains its own Planck coefficients for exact broadband scoring.
-    observations = tuple(np.concatenate([entry[2][i] for entry in validation])
-                         for i in range(4))+validation[0][2][4:]
-    rows = []
-    previous = None
-    for count in settings["components"]:
-        row, state = evaluate_candidate(
-            count, train_features, features, train_obs, observations,
-            [(entry[0], entry[1]) for entry in validation],
-            True, .98, 42, 3, settings["nominal_components"])
-        exact = evaluate_exact_candidate(count, train_obs, state["train_labels"],
-            [(entry[2], state["validation_labels"][entry[1]]) for entry in validation])
-        for name, value in zip((
-            "exact_raw_flux_std", "exact_corrected_flux_std", "exact_flux_improvement",
-            "exact_adm_ratio_rmse", "exact_worst_channel_adm_rmse",
-            "exact_worst_scene_adm_rmse"), exact):
-            row[name] = value
-        if not all(np.isfinite(row[key]) for key in (
-                "adm_ratio_rmse", "exact_adm_ratio_rmse", "ari_min", "exact_corrected_flux_std")):
-            raise ValueError(f"Component {count} diagnostics lack valid ADM/flux/stability scores")
-        row["shortlisted"] = True  # All budget candidates receive the exact stage.
-        improvement = (previous-row["adm_ratio_rmse"])/previous if previous is not None else np.inf
-        row.update(
-            criterion_adm_plateau=bool(improvement < .01),
-            criterion_occupancy=bool(row["test_min_fraction"] >= .005),
-            criterion_stability=bool(row["occupancy_js"] <= .1 and row["centroid_shift"] <= 1
-                                     and row["ari_min"] >= .8),
-            criterion_angular_coverage=bool(row["minimum_angular_coverage"] >= .7),
-            criterion_adm_coverage=bool(np.isfinite(row["worst_scene_adm_rmse"])),
-            criterion_exact_adm_coverage=bool(np.isfinite(row["exact_worst_scene_adm_rmse"])),
-            criterion_exact_improvement=bool(row["exact_flux_improvement"] >= 0),
-        )
-        row["all_criteria"] = all(value for key, value in row.items() if key.startswith("criterion_"))
-        previous = row["adm_ratio_rmse"]
-        rows.append(row)
-        print(f"Four-panel diagnostic k={count} completed", flush=True)
-    output = Path(settings["diagnostic_dir"])/"gmm_component_diagnostics.csv"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
-        writer.writeheader()
-        writer.writerows(rows)
-    write(str(output)+".json", {
-        "provenance": provenance([*training_paths, *validation_paths]),
-        "manual_components": settings["nominal_components"],
-        "scope": "Existing find_nComponents scoring, spectral-only features, cached overlap population",
-        "notes": [
-            "Seed 42 diagnostic fits use existing five-initialization fitter and three bootstrap refits.",
-            "Diagnostic fits are separate from the nominal two-initialization fit; no automatic count override.",
-            "All candidates receive exact production ADM and cubic ABI broadband diagnostics.",
-            "Pooled training uses first-day Planck coefficients, as in existing diagnostic tooling.",
-            "Exact held-out flux scoring preserves per-day Planck coefficients.",
-            "Coverage uses original nine 10-degree bins despite eligibility restricted to 70 degrees.",
-        ],
-    })
 
 
 def spatial_tile(model, raw_radiance, radiance, angles, planck, library, coefficients,
@@ -312,95 +174,6 @@ def spatial_tile(model, raw_radiance, radiance, angles, planck, library, coeffic
     return retrieved-reference
 
 
-def spatial(settings, config):
-    """Fit fixed ABI proxy ADMs on training days; score matched held-out tiles."""
-    directory = Path(settings["output_dir"])
-    model_path = directory/"spectral_gmm.joblib"
-    verify(model_path)
-    fitted = joblib.load(model_path)
-    model, population = fitted["model"], fitted["population"]
-    training_paths = cache_paths(settings, settings["training_days"])
-    training = collect_training(training_paths, settings["tiles_per_day"],
-                                settings["sample_points"], 5, 42)
-    labels = model.predict(training["features"][:, :10])
-    library = np.empty((len(population), 6, 1))
-    for scene in range(len(population)):
-        selected = labels == scene
-        for channel in range(6):
-            library[scene, channel] = fit_scene_adm(
-                training["angles"][selected], training["radiance"][selected, :, channel], "regularized")
-    coefficient_path = config["narrowband_to_broadband_coeffs_file"]
-    coefficients = load_cubic_coefficients(coefficient_path)
-    blocks = settings["spatial"]["block_sizes"]
-    nominal = settings["spatial"]["nominal_block_size"]
-    if (not blocks or blocks[0] != 1 or nominal not in blocks
-            or sorted(set(blocks)) != blocks
-            or any(not isinstance(block, int) or block < 1 for block in blocks)
-            or nominal*settings["spatial"]["native_resolution_km"] != settings["product_resolution_km"]):
-        raise ValueError("Spatial ladder must include identity and nominal product footprint")
-    residuals = {block: [] for block in blocks}
-    day_rows = {}
-    inputs = [model_path, str(model_path)+".json", coefficient_path, *training_paths]
-    for path in cache_paths(settings, settings["validation_days"]):
-        index, data = open_cache(path)
-        sources = [entry["path"] for entry in index["provenance"]["inputs"].values()]
-        if len(sources) != 1:
-            raise ValueError("Expected one preprocessed ABI source per cache")
-        source_path = ROOT/sources[0]
-        inputs.extend([path, source_path])
-        daily = {block: [] for block in blocks}
-        with Dataset(source_path) as source:
-            for tile in range(settings["tiles_per_day"]):
-                valid = np.repeat(np.repeat(data["valid_blocks"][tile], 5, axis=0), 5, axis=1)
-                y, x = data["origins"][tile]
-                height, width = valid.shape
-                raw = np.stack([
-                    np.asarray(np.ma.filled(source.variables[f"rad_{sat}_interp"][
-                        y:y+height, x:x+width, list(SPECTRAL_CHANNEL_INDICES)], np.nan))
-                    for sat in ("G16", "G18")], axis=2)
-                for block in blocks:
-                    errors = spatial_tile(model, raw, data["radiance"][tile], data["angles"][tile],
-                                          data["planck"], library, coefficients, valid, block,
-                                          origin=(y, x))
-                    daily[block].append(errors)
-        day_rows[str(index["day"])] = {}
-        for block in blocks:
-            errors = np.concatenate(daily[block])
-            residuals[block].append(errors)
-            day_rows[str(index["day"])][str(block)] = {
-                "footprints": len(errors), **error_classes(errors[:, None], np.full(len(errors), 1/len(errors)))}
-        print(f"Spatial processing day {index['day']} completed", flush=True)
-    rows = []
-    combined = {}
-    for block in blocks:
-        errors = np.concatenate(residuals[block])
-        combined[f"block_{block}"] = errors
-        rows.append({"block_size": block,
-                     "resolution_km": block*settings["spatial"]["native_resolution_km"],
-                     "footprints": len(errors),
-                     **error_classes(errors[:, None], np.full(len(errors), 1/len(errors)))})
-    if np.max(np.abs(combined["block_1"])) > 1e-9:
-        raise RuntimeError("Identity spatial route does not close")
-    np.savez_compressed(directory/"spatial_residuals.npz", **combined)
-    joblib.dump(library, directory/"abi_spatial_adm.joblib")
-    write(directory/"spatial_report.json", {
-        "provenance": provenance(inputs), "rows": rows, "by_day": day_rows,
-        "nominal": next(row for row in rows if row["block_size"] == nominal),
-        "assumptions": [
-            "Coarse-minus-mean-fine retrieval is a processing difference, not absolute flux truth.",
-            "Fixed clean-trained spectral GMM, training-day ABI scene ADMs, existing ABI cubic N2BC.",
-            "Uncorrected radiances define features; corrected radiances and angles define retrieval.",
-            "Equal-area box averages reuse average_resolution.block_average_chunk; complete valid blocks only.",
-            "Blocks align to full-grid origin; incomplete tile-edge blocks excluded independently per resolution.",
-            "Resolution-specific footprint counts differ; population consists of the same sampled tiles, not full overlap.",
-            "ABI two-view spatial response assumed transferable to ECO fifteen-view retrieval.",
-            "Spatial contribution independent of existing Sunny-source errors (user work hypothesis).",
-            "Deterministic comparison: random SD zero excludes spatial/noise interactions.",
-            "Existing ABI cubic spectral reference differs from nominal ECO 4-100 um regression.",
-        ],
-    })
-
-
 def abi_noise_features(radiance, planck, noise):
     """Recompute mean-satellite spectral features from ABI radiances[n,2,6]."""
     noisy = np.asarray(radiance)+noise
@@ -409,104 +182,6 @@ def abi_noise_features(radiance, planck, noise):
     bt = np.stack([synthetic_brightness_temperature(noisy[:, satellite], planck[satellite])
                    for satellite in range(2)], axis=1)
     return spectral_features_from_bt(bt.mean(axis=1))
-
-
-def assignment(settings):
-    """Estimate scene transitions on a bounded uniform sample of held-out ABI."""
-    directory = Path(settings["output_dir"])
-    model_path = directory/"spectral_gmm.joblib"
-    verify(model_path)
-    fitted = joblib.load(model_path)
-    model, population = fitted["model"], fitted["population"]
-    k = len(population)
-    capacity = settings["sample_points"]
-    rng = np.random.default_rng(settings["noise_seed"])
-    keys = np.empty(0)
-    records = {name: None for name in ("radiance", "planck", "features", "day")}
-    inputs = [model_path, str(model_path)+".json"]
-    for path in cache_paths(settings, settings["validation_days"]):
-        index, cache = open_cache(path)
-        sources = [entry["path"] for entry in index["provenance"]["inputs"].values()]
-        if len(sources) != 1:
-            raise ValueError("Expected one preprocessed ABI source per cache")
-        source_path = ROOT/sources[0]
-        inputs.extend([path, source_path])
-        with Dataset(source_path) as source:
-            planck = np.asarray(cache["planck"])
-            for tile in range(settings["tiles_per_day"]):
-                valid = np.repeat(np.repeat(cache["valid_blocks"][tile], 5, axis=0), 5, axis=1)
-                y, x = cache["origins"][tile]
-                height, width = valid.shape
-                radiance = np.stack([
-                    np.asarray(np.ma.filled(source.variables[f"rad_{sat}_interp"][
-                        y:y+height, x:x+width, list(SPECTRAL_CHANNEL_INDICES)], np.nan))
-                    for sat in ("G16", "G18")], axis=2)[valid]
-                features = abi_noise_features(radiance, planck, 0)
-                if not np.allclose(features, cache["features"][tile][valid, :10], atol=.002):
-                    raise ValueError("Raw ABI radiance/BT features do not match cached GMM inputs")
-                count = len(features)
-                arrays = {
-                    "radiance": radiance,
-                    "planck": np.broadcast_to(planck, (count, 2, 6, 4)),
-                    "features": features,
-                    "day": np.full(count, index["day"]),
-                }
-                keys = np.r_[keys, rng.random(count)]
-                for name, value in arrays.items():
-                    records[name] = value if records[name] is None else np.concatenate((records[name], value))
-                if len(keys) > capacity:
-                    take = np.argpartition(keys, capacity-1)[:capacity]
-                    keys = keys[take]
-                    records = {name: value[take] for name, value in records.items()}
-    if len(keys) < capacity:
-        raise ValueError("Insufficient eligible held-out ABI pixels for noise assessment")
-    labels = model.predict(records["features"])
-    # ABI spectral-density dL/dT in native radiance units, evaluated at 255 K.
-    fk1, fk2, bc1, bc2 = np.moveaxis(records["planck"], -1, 0)
-    argument = fk2/(bc1+bc2*255.)
-    exponential = np.exp(argument)
-    noise_sd = settings["nedt_k_at_255"]*fk1*exponential*fk2*bc2/(
-        np.expm1(argument)**2*(bc1+bc2*255.)**2)
-    counts = np.zeros((k, k), dtype=np.int64)
-    per_day = {str(day): np.zeros((k, k), dtype=np.int64) for day in settings["validation_days"]}
-    for repetition in range(settings["noise_realizations"]):
-        rng = np.random.default_rng(np.random.SeedSequence([settings["noise_seed"], repetition, 3]))
-        perturbed = lognormal_radiance(
-            records["radiance"], noise_sd, rng.normal(size=records["radiance"].shape))
-        bt = np.empty_like(records["radiance"])
-        for satellite in range(2):
-            coefficients = np.moveaxis(records["planck"][:, satellite], -1, 0)
-            bt[:, satellite] = radiance_to_brightness_temperature(perturbed[:, satellite], coefficients)
-        features = spectral_features_from_bt(bt.mean(axis=1))
-        if np.any(~np.isfinite(features)) or np.any(bt <= 0) or np.any(bt >= 1000):
-            raise ValueError("ABI noise realization has invalid BT features")
-        noisy = model.predict(features)
-        np.add.at(counts, (labels, noisy), 1)
-        for day, matrix in per_day.items():
-            selected = records["day"] == int(day)
-            np.add.at(matrix, (labels[selected], noisy[selected]), 1)
-    if np.any(counts.sum(axis=1) == 0):
-        raise ValueError("ABI noise sample lacks a nominal scene")
-    probabilities = counts/counts.sum(axis=1, keepdims=True)
-    write(directory/"abi_assignment.json", {
-        "provenance": provenance(inputs), "transition_counts": counts.tolist(),
-        "transition_probabilities": probabilities.tolist(),
-        "weighted_change_probability": float(population @ (1-np.diag(probabilities))),
-        "sample_change_probability": float(1-np.trace(counts)/counts.sum()),
-        "baseline_sample_counts": np.bincount(labels, minlength=k).tolist(),
-        "by_day_transition_counts": {day: value.tolist() for day, value in per_day.items()},
-        "sample_pixels": len(labels), "noise_realizations": settings["noise_realizations"],
-        "nedt_k_at_255": settings["nedt_k_at_255"],
-        "noise_model": "mean_preserving_lognormal",
-        "assumptions": [
-            "Observed ABI radiances treated as truth; existing ABI noise is not removed.",
-            "Fixed clean-trained GMM; independent mean-preserving lognormal radiance across satellites, channels and pixels.",
-            "Radiance SD matches NEdT times the ABI Planck derivative at 255 K; asymmetric noise is a modelling assumption.",
-            "Scene-conditional ABI transitions assumed applicable to ECO and within-scene Sunny files.",
-            "Transferred scene transitions independent of simulated ECO retrieval radiometric noise.",
-            "Sampled eligible native overlap pixels, not global or full-disk coverage.",
-        ],
-    })
 
 
 def draw_scene_transitions(labels, probabilities, repetitions, seed):
@@ -528,13 +203,9 @@ def prepare(settings, config):
     scenario = load_channel_scenarios(config["eco_channel_scenarios_file"])[settings["scenario"]]
     with Path(config["eco_channel_scenarios_file"]).open() as source:
         catalog = yaml.safe_load(source)
-    if settings.get("abi_mode") == "full":
-        from nominal_streaming import open_features
-        index, _ = open_features(settings, settings["training_days"][0])
-        planck = np.asarray(index["planck"])[0]
-    else:
-        _, cache = open_cache(cache_paths(settings, settings["training_days"])[0])
-        planck = cache["planck"][0]
+    from nominal_streaming import cache_path, open_features
+    index, _ = open_features(settings, settings["training_days"][0])
+    planck = np.asarray(index["planck"])[0]
     arrays = {key: [] for key in ("eco_radiance", "abi_radiance", "true_band_flux", "reference",
                                    "eco_noise_sd", "groups", "regimes")}
     angles = np.asarray(settings["angles_deg"])
@@ -569,17 +240,10 @@ def prepare(settings, config):
                         planck=planck, angles=angles)
     write(str(output)+".json", {
         "provenance": provenance([*[path for path, _, _ in files], config["goes_filter_dir"],
-                                  cache_paths(settings, settings["training_days"])[0]]),
+                                  cache_path(settings, settings["training_days"][0]) / "index.json"]),
         "reference_domain_um": settings["reference_domain_um"], "roundtrip_error_K": roundtrip,
         "classifier_noise": "Measured separately on held-out ABI; no noisy Sunny classification",
     })
-
-
-def classify(model, radiance, planck):
-    shape = radiance.shape[:2]
-    bt = synthetic_brightness_temperature(radiance.reshape(-1, 6), planck)
-    posterior = model.predict_proba(spectral_features_from_bt(bt)).reshape(*shape, -1)
-    return file_scene(posterior)
 
 
 def density(model, radiance, planck):
@@ -588,17 +252,12 @@ def density(model, radiance, planck):
     return model[-1].score_samples(transformed).reshape(radiance.shape[:2])
 
 
-def fit_n2bc(flux, reference, weights):
-    scaler = StandardScaler().fit(flux, sample_weight=weights)
-    poly = PolynomialFeatures(2, include_bias=False)
-    design = poly.fit_transform(scaler.transform(flux))
-    regression = LinearRegression().fit(design, reference, sample_weight=weights)
-    return scaler, poly, regression
-
-
 def calculate(settings):
     directory = Path(settings["output_dir"])
-    model_path, data_path = directory/"spectral_gmm.joblib", directory/"sunny.npz"
+    model_path = Path(settings.get(
+        "model_path", directory/"spectral_gmm.joblib"
+    ))
+    data_path = directory/"sunny.npz"
     verify(model_path)
     verify(data_path)
     fitted = joblib.load(model_path)
@@ -784,49 +443,42 @@ def calculate(settings):
 
 
 def main():
-    global SETTINGS, CONFIG_PATH
+    global SETTINGS, CONFIG_PATH, TAXONOMY_PATH
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--settings", type=Path, default=SETTINGS)
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
+    parser.add_argument("--taxonomy", type=Path, default=TAXONOMY_PATH)
     parser.add_argument("--day", type=int)
     parser.add_argument("--components", type=int)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--initialization", type=int)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--block", type=int)
+    parser.add_argument("--form", choices=("regularized", "quadratic"), default="regularized",
+                        help="ADM angular form for the adm stage")
     parser.add_argument(
         "stage",
-        choices=("cache", "candidate", "candidate-init", "candidate-combine", "train",
+        choices=("cache", "candidate", "candidate-init", "candidate-sweep", "candidate-combine", "train",
                  "prepare", "assignment", "diagnostics", "spatial", "calculate",
                  "preprocessing", "score", "adm", "assignment-day", "assignment-combine",
                  "spatial-part", "spatial-combine", "stability-sample", "diagnostics-component",
-                 "diagnostics-combine"),
+                 "diagnostics-combine", "candidates"),
     )
     args = parser.parse_args()
     if args.workers < 1:
         parser.error("--workers must be a positive integer")
     SETTINGS, CONFIG_PATH = args.settings.resolve(), args.config.resolve()
+    TAXONOMY_PATH = args.taxonomy.resolve()
     settings, config = options()
-    if settings.get("abi_mode") == "full" and args.stage in (
-            "cache", "candidate", "candidate-init", "candidate-combine", "train",
-            "assignment", "diagnostics", "spatial", "preprocessing", "score", "adm",
-            "assignment-day", "assignment-combine", "spatial-part", "spatial-combine",
-            "stability-sample", "diagnostics-component", "diagnostics-combine"):
+    if args.stage == "prepare":
+        prepare(settings, config)
+    elif args.stage == "calculate":
+        calculate(settings)
+    else:
         import nominal_streaming
         nominal_streaming.run(args.stage, settings, config, sys.modules[__name__],
                               args.day, args.components, args.seed, args.initialization,
-                              workers=args.workers, block=args.block)
-        return
-    if args.stage in ("cache", "candidate", "candidate-init", "candidate-combine",
-                      "preprocessing", "score", "adm", "assignment-day", "assignment-combine",
-                      "spatial-part", "spatial-combine", "stability-sample", "diagnostics-component",
-                      "diagnostics-combine"):
-        parser.error(f"{args.stage} is only available for abi_mode: full")
-    {"train": lambda: train(settings), "prepare": lambda: prepare(settings, config),
-     "assignment": lambda: assignment(settings), "diagnostics": lambda: diagnostics(settings),
-     "spatial": lambda: spatial(settings, config),
-     "calculate": lambda: calculate(settings)}[args.stage]()
-
+                              workers=args.workers, block=args.block, form=args.form)
 
 if __name__ == "__main__":
     main()

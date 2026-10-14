@@ -1,0 +1,31 @@
+# Shared ECO_LW scene taxonomy: ONE spectral-only GMM used by the ABI
+# production chain, the full-population diagnostics and the nominal budget.
+#
+# The component count K is a reviewed, manual choice (statistical criteria
+# disagree and several have no optimum). Procedure:
+#   1. python -m snakemake gmm_selection_diagnostics --cores N
+#      (K-independent: every eligible pixel, 20 held-in / 5 held-out days,
+#       K and fixed gmm_seed from diagnostics.settings)
+#   2. Review the table diagnostics.csv and the figures it produces in
+#      figures/gmm_component_selection/diagnostics/gmm_selection_*.png
+#      (overview, criteria heat map, assignment stability)
+#   3. python scripts/check_scene_taxonomy.py --summary
+#      (prints the table SHA-256 and the K-1/K+1 neighbour deltas)
+#   4. Fill selection.* and diagnostics.csv_sha256 below and commit.
+# Production and the nominal budget refuse to run until this record is
+# complete and its SHA-256 matches the table on disk. Regenerated
+# diagnostics (code/config change) therefore force a new review.
+schema_version: 1
+feature_set: spectral_10
+features: [C08_av, C11_av, C12_av, C14_av, C15_av, C16_av,
+           BTD14-11, BTD14-15, BTD14-08, BTD14-16]
+diagnostics:
+  # Full 2-15 review profile; production uses nominal_budget_production.yaml.
+  settings: config/nominal_budget_full.yaml
+  csv: data/diagnostics/nominal_full/gmm_component_diagnostics.csv
+  csv_sha256: 7facf9ebcf2aebe9624f5ed1c79629725556dc535af5736bf55852412b93986b
+selection:
+  n_components: 7
+  rationale: Best number of components based on diagnostics
+  selected_by: David
+  date: 2026-10-12

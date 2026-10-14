@@ -1,16 +1,16 @@
 schema_version: 1
 abi_mode: full
 output_dir: data/uncertainty/nominal_full
+model_path: data/models/spectral_gmm.joblib
 diagnostic_dir: data/diagnostics/nominal_full
-figure_dir: figures/uncertainty/nominal_full
-diagnostic_figure_dir: figures/diagnostics/nominal_full
+figure_dir: figures/nominal_production/uncertainties/full_profile
+diagnostic_figure_dir: figures/nominal_production/diagnostics/full_profile
 training_days: [245, 247, 249, 250, 251, 254, 255, 256, 257, 258, 261, 262, 263, 264, 266, 268, 269, 270, 273, 274]
 validation_days: [246, 252, 259, 265, 271]
 cache_root: data/uncertainty_runs/nominal_full/features
 chunk_rows: 32
 batch_points: 65536
 netcdf_chunk_cache_mb: 128
-gmm_workers: 8
 gmm_chunk_points: 65536
 stability_max_points: 250000
 stability_repeats: 3
@@ -20,8 +20,7 @@ gmm_initializations: 2
 gmm_max_iter: 300
 gmm_tol: 0.001
 components: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-nominal_components: 6
-seeds: [42, 73, 109]
+gmm_seed: 42
 folds: 5
 noise_realizations: 30
 noise_seed: 42

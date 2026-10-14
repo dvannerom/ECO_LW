@@ -91,6 +91,9 @@ def build_provenance(
     code_paths: Sequence[Path],
     configuration_paths: Sequence[Path],
     input_paths: Mapping[str, Path],
+    stage: Optional[str] = None,
+    configuration_identity: Optional[Mapping[str, object]] = None,
+    scoped_code_paths: Optional[Mapping[Path, Sequence[str]]] = None,
 ) -> dict[str, object]:
     """Capture exact code/config hashes and bounded-cost input inventory identities."""
     root = root.resolve()
@@ -101,8 +104,12 @@ def build_provenance(
             for path in paths
         }
 
-    return {
-        "schema_version": 1,
+    if (stage is None) != (configuration_identity is None):
+        raise ValueError("Stage provenance requires both stage and configuration identity")
+    if stage is None and scoped_code_paths:
+        raise ValueError("Scoped code hashes are only supported for stage provenance")
+    provenance = {
+        "schema_version": 2 if stage is not None else 1,
         "code_sha256": hash_files(code_paths),
         "configuration_sha256": hash_files(configuration_paths),
         "inputs": {
@@ -114,14 +121,77 @@ def build_provenance(
             "path, size, and mtime metadata to avoid reading large source data."
         ),
     }
+    if stage is not None:
+        from nominal_provenance import identity_sha256, scoped_code_sha256
+
+        provenance["stage"] = stage
+        provenance["configuration_identity"] = dict(configuration_identity)
+        provenance["configuration_identity_sha256"] = identity_sha256(configuration_identity)
+        provenance["scoped_code_sha256"] = {
+            _relative_path(path, root): {
+                "symbols": list(symbols),
+                "sha256": scoped_code_sha256(path.resolve(), symbols),
+            }
+            for path, symbols in (scoped_code_paths or {}).items()
+        }
+    return provenance
 
 
-def check_provenance(provenance: object, root: Path) -> dict[str, object]:
+def check_provenance(
+    provenance: object,
+    root: Path,
+    *,
+    expected_stage: Optional[str] = None,
+    expected_configuration_identity: Optional[Mapping[str, object]] = None,
+) -> dict[str, object]:
     """Check recorded code, configuration, and input identities against disk."""
-    if not isinstance(provenance, dict) or provenance.get("schema_version") != 1:
+    if not isinstance(provenance, dict) or provenance.get("schema_version") not in (1, 2):
         return {"status": "provenance_missing_or_unsupported", "mismatches": []}
     root = root.resolve()
     mismatches = []
+
+    schema_version = provenance["schema_version"]
+    if schema_version == 1:
+        # Legacy full-scope metadata remains verifiable, but callers requiring
+        # a stage identity must never accept it as a migrated stage record.
+        if expected_stage is not None or expected_configuration_identity is not None:
+            mismatches.append("stage_identity")
+    else:
+        from nominal_provenance import identity_sha256, scoped_code_sha256
+
+        stage = provenance.get("stage")
+        identity = provenance.get("configuration_identity")
+        identity_hash = provenance.get("configuration_identity_sha256")
+        if not isinstance(stage, str) or not isinstance(identity, dict):
+            mismatches.append("stage_identity")
+        elif identity_sha256(identity) != identity_hash:
+            mismatches.append("configuration_identity_sha256")
+        if expected_stage is None or expected_configuration_identity is None:
+            mismatches.append("stage_identity_not_verified")
+        if expected_stage is not None and stage != expected_stage:
+            mismatches.append("stage")
+        if (expected_configuration_identity is not None
+                and identity != dict(expected_configuration_identity)):
+            mismatches.append("configuration_identity")
+        scoped_code = provenance.get("scoped_code_sha256")
+        if not isinstance(scoped_code, dict):
+            mismatches.append("scoped_code_sha256")
+        else:
+            for relative_path, expected in scoped_code.items():
+                if not isinstance(expected, dict):
+                    mismatches.append(str(relative_path))
+                    continue
+                symbols = expected.get("symbols")
+                expected_hash = expected.get("sha256")
+                path = Path(relative_path)
+                if not path.is_absolute():
+                    path = root / path
+                try:
+                    actual_hash = scoped_code_sha256(path, symbols)
+                except (OSError, SyntaxError, TypeError, ValueError):
+                    actual_hash = None
+                if actual_hash != expected_hash:
+                    mismatches.append(str(relative_path))
 
     for section in ("code_sha256", "configuration_sha256"):
         identities = provenance.get(section)

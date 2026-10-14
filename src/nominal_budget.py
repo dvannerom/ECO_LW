@@ -2,8 +2,12 @@
 
 import numpy as np
 from scipy.integrate import simpson
-from scipy.optimize import minimize_scalar
+from scipy.optimize import LinearConstraint, minimize, minimize_scalar
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
+from abi_sunny_comparison import synthetic_brightness_temperature
+from scene_features import spectral_features_from_bt
 from sensitivity import angular_basis, angular_integral
 
 
@@ -64,6 +68,27 @@ def file_scene(probabilities):
     return chosen, counts.max(axis=1)/labels.shape[1]
 
 
+def classify(model, radiance, planck):
+    """ABI-GMM scene of each Sunny file by majority vote over its views.
+
+    radiance[file, view, 6] are ABI-convolved Sunny radiances; planck holds the
+    ABI channel Planck coefficients. Returns (labels[file], vote_fraction[file]).
+    """
+    shape = radiance.shape[:2]
+    bt = synthetic_brightness_temperature(radiance.reshape(-1, 6), planck)
+    posterior = model.predict_proba(spectral_features_from_bt(bt)).reshape(*shape, -1)
+    return file_scene(posterior)
+
+
+def fit_n2bc(flux, reference, weights, degree=2):
+    """Weighted global N2BC: standardized polynomial of flux[file, channel] -> reference[file]."""
+    scaler = StandardScaler().fit(flux, sample_weight=weights)
+    poly = PolynomialFeatures(degree, include_bias=False)
+    design = poly.fit_transform(scaler.transform(flux))
+    regression = LinearRegression().fit(design, reference, sample_weight=weights)
+    return scaler, poly, regression
+
+
 def population_weights(labels, population):
     """Equal weight within scenes, matching supported ABI scene masses.
 
@@ -87,42 +112,59 @@ def population_weights(labels, population):
     }
 
 
-def fit_pooled_shape(radiance, angles):
+def fit_pooled_shape(radiance, angles, form="regularized"):
     """Fit one shared shape/channel with separate per-file amplitudes.
 
     Equal relative radiance residual weighting gives each file equal influence,
-    independent of its brightness. Input shape (file,view,channel).
+    independent of its brightness. Input shape (file,view,channel); returns
+    parameters[channel, P] (P=1 regularized, P=2 quadratic). Both forms keep
+    the 0-90 degree profile positive on a 0.1 degree grid.
     """
     radiance = np.asarray(radiance, dtype=float)
     if radiance.ndim != 3 or not len(radiance) or np.any(radiance <= 0) or np.any(~np.isfinite(radiance)):
         raise ValueError("Pooled ADM requires positive finite training radiances")
-    basis = angular_basis(angles, "regularized")[:, 0]
-    grid = angular_basis(np.linspace(0, 90, 901), "regularized")[:, 0]
-    lower = np.max((1e-6-1)/grid[grid > 0])
-    upper = np.min((1e-6-1)/grid[grid < 0])
+    basis = angular_basis(angles, form)
+    grid = angular_basis(np.linspace(0, 90, 901), form)
+    if form == "regularized":
+        basis, grid = basis[:, 0], grid[:, 0]
+        lower = np.max((1e-6-1)/grid[grid > 0])
+        upper = np.min((1e-6-1)/grid[grid < 0])
+    elif form != "quadratic":
+        raise ValueError(f"Unsupported pooled ADM form {form}")
     coefficients = []
     for channel in range(radiance.shape[2]):
         target = radiance[:, :, channel]/radiance[:, :, channel].mean(axis=1, keepdims=True)
 
         def objective(b):
-            profile = 1+b*basis
+            profile = 1+basis @ b if form == "quadratic" else 1+b*basis
             amplitude = target @ profile / np.dot(profile, profile)
             return np.mean((target-amplitude[:, None]*profile)**2)
 
-        fit = minimize_scalar(objective, bounds=(lower, upper), method="bounded",
-                              options={"xatol": 1e-10})
-        if not fit.success:
-            raise RuntimeError("Pooled shape fit failed")
+        if form == "regularized":
+            fit = minimize_scalar(objective, bounds=(lower, upper), method="bounded",
+                                  options={"xatol": 1e-10})
+            if not fit.success:
+                raise RuntimeError("Pooled shape fit failed")
+            coefficients.append([fit.x])
+            continue
+        fit = minimize(objective, np.zeros(grid.shape[1]), method="SLSQP",
+                       constraints=[LinearConstraint(grid, 1e-6-1, np.inf)],
+                       options={"ftol": 1e-14, "maxiter": 500})
+        if not fit.success or np.any(1+grid @ fit.x <= 0):
+            raise RuntimeError(f"Pooled quadratic shape fit failed: {fit.message}")
         coefficients.append(fit.x)
-    return np.asarray(coefficients)[:, None]
+    return np.asarray(coefficients)
 
 
-def library_flux(radiance, angles, labels, library):
-    """Fixed scene profile with equal-weight least-squares amplitude per channel."""
+def library_flux(radiance, angles, labels, library, form="regularized"):
+    """Fixed scene profile with equal-weight least-squares amplitude per channel.
+
+    radiance[file, view, channel]; library[K, channel, P]; returns flux[file, channel].
+    """
     parameters = library[np.asarray(labels)]
-    shape = 1+np.einsum("vp,scp->svc", angular_basis(angles, "regularized"), parameters)
+    shape = 1+np.einsum("vp,scp->svc", angular_basis(angles, form), parameters)
     amplitude = (radiance*shape).sum(axis=1)/np.square(shape).sum(axis=1)
-    flux = np.pi*amplitude*angular_integral(library, "regularized")[labels]
+    flux = np.pi*amplitude*angular_integral(library, form)[labels]
     if np.any(~np.isfinite(flux)) or np.any(flux <= 0):
         raise ValueError("Invalid scene-library flux")
     return flux

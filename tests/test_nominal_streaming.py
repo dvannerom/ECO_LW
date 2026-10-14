@@ -61,28 +61,71 @@ def full_case(tmp_path, monkeypatch):
         write_abi(tmp_path/f"{day}.nc")
     monkeypatch.setattr(streaming, "source_path", lambda day: tmp_path/f"{day}.nc")
     monkeypatch.setattr(streaming, "check_provenance", lambda *args: {"status": "current"})
+    monkeypatch.setattr(streaming, "check_nominal_stage_provenance",
+                        lambda *args, **kwargs: {"status": "current"})
+    monkeypatch.setattr(runner, "check_stage_provenance",
+                        lambda *args, **kwargs: {"status": "current"})
     settings = {
         "abi_mode": "full", "training_days": [245], "validation_days": [246, 247],
         "cache_root": str(tmp_path/"features"), "output_dir": str(tmp_path/"budget"),
+        "model_path": str(tmp_path/"models"/"spectral_gmm.joblib"),
         "diagnostic_dir": str(tmp_path/"diagnostics"), "chunk_rows": 3,
         "batch_points": 57, "maximum_vza_deg": 70,
         "noise_realizations": 3, "noise_seed": 42, "nedt_k_at_255": .4,
-        "components": [2], "nominal_components": 2, "seeds": [42],
+        "components": [2], "nominal_components": 2, "gmm_seed": 42,
         "gmm_initializations": 1, "gmm_max_iter": 300, "gmm_tol": .001,
         "product_resolution_km": 10,
         "spatial": {"block_sizes": [1, 2, 5], "nominal_block_size": 5,
                     "native_resolution_km": 2, "independent_of_other_sources": True},
     }
-    hooks = SimpleNamespace(write=runner.write, provenance=lambda inputs: {},
-                            verify=lambda path: None, abi_noise_features=runner.abi_noise_features,
+    hooks = SimpleNamespace(write=runner.write, provenance=lambda inputs, **kwargs: {},
+                            verify=lambda path, **kwargs: None,
+                            abi_noise_features=runner.abi_noise_features,
                             spatial_tile=runner.spatial_tile)
     for day in days:
         streaming.prepare_cache(settings, day, hooks)
     output = Path(settings["output_dir"])
     output.mkdir()
+    model_path = streaming.spectral_model_path(settings)
+    model_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": ThresholdModel(), "population": np.array([.5, .5])},
-                output/"spectral_gmm.joblib")
+                model_path)
     return settings, hooks
+
+
+def write_candidate_summary(settings, counts=(2,), write_models=True):
+    """Minimal K-independent candidate summary (fixed seed 42 for every K)."""
+    best = {}
+    for count in counts:
+        if write_models:
+            joblib.dump(ThresholdModel(), Path(settings["output_dir"])/f"candidate_k{count}_s42.joblib")
+        best[str(count)] = {"components": count, "seed": 42,
+                            "heldout_mean_log_likelihood": -float(count),
+                            "heldout_day_log_likelihood": [-float(count)]*2,
+                            "heldout_counts": [100]*count, "minimum_occupancy": 1/count,
+                            "population_by_day": {}}
+    runner.write(streaming.candidates_path(settings), {
+        "provenance": {}, "candidates": list(best.values()), "best_by_components": best})
+
+
+def write_reviewed_taxonomy(settings, tmp_path, components):
+    """Record a reviewed K pinned to the current diagnostics table."""
+    import yaml
+    from scene_features import spectral_feature_names
+    from uncertainty import sha256_file
+    table = Path(settings["diagnostic_dir"])/"gmm_component_diagnostics.csv"
+    active = tmp_path/"nominal_settings.yaml"
+    active.write_text("profile: test\n")
+    taxonomy = tmp_path/"scene_taxonomy.yaml"
+    taxonomy.write_text(yaml.safe_dump({
+        "schema_version": 1, "feature_set": "spectral_10", "features": spectral_feature_names(),
+        "diagnostics": {"settings": str(active), "csv": str(table),
+                        "csv_sha256": sha256_file(table)},
+        "selection": {"n_components": components, "rationale": "test", "selected_by": "pytest",
+                      "date": "2026-10-09"},
+    }))
+    settings["scene_taxonomy_file"] = str(taxonomy)
+    return active
 
 
 def test_complete_native_coverage_and_edge_chunks(full_case):
@@ -142,6 +185,7 @@ def test_dim_pixel_assignment_remains_positive_and_chunk_invariant(full_case):
 def test_full_adm_fit_and_spatial_chunk_boundaries(full_case, monkeypatch):
     settings, hooks = full_case
     output = Path(settings["output_dir"])
+    write_candidate_summary(settings)
     library = streaming.fit_library(settings, ThresholdModel(), output)
     np.testing.assert_allclose(library[:, :, 0], np.repeat([[-.2], [-.4]], 6, axis=1), atol=1e-6)
     assert not (output/"adm_fit_records.npy").exists()
@@ -211,6 +255,30 @@ def test_full_settings_partition(full_case):
             with pytest.raises(ValueError, match=key):
                 streaming.validate_settings(dict(settings, **{key: value}),
                                             {"days": [245, 246, 247]})
+    for seed in (-1, 2**32, True, 1.5):
+        with pytest.raises(ValueError, match="gmm_seed"):
+            streaming.validate_settings(dict(settings, gmm_seed=seed),
+                                        {"days": [245, 246, 247]})
+    streaming.validate_settings(dict(settings, gmm_seed=0), {"days": [245, 246, 247]})
+    with pytest.raises(ValueError, match="Remove seeds"):
+        streaming.validate_settings(dict(settings, seeds=[42, 73]),
+                                    {"days": [245, 246, 247]})
+
+
+def test_candidate_summary_rejects_seed_sweep_and_mismatched_seed(full_case):
+    settings, hooks = full_case
+    write_candidate_summary(settings)
+    record = streaming.read_candidates(settings, hooks)
+    path = streaming.candidates_path(settings)
+    record["candidates"].append({**record["candidates"][0], "seed": 73})
+    runner.write(path, record)
+    with pytest.raises(ValueError, match="single configured gmm_seed"):
+        streaming.read_candidates(settings, hooks)
+    write_candidate_summary(settings)
+    with pytest.raises(ValueError, match="single configured gmm_seed"):
+        streaming.read_candidates(dict(settings, gmm_seed=73), hooks)
+    with pytest.raises(ValueError, match="not configured"):
+        streaming.fit_candidate_initialization(settings, 2, 73, 0, hooks)
 
 
 def test_netcdf_chunk_cache_preserves_reads(full_case, tmp_path):
@@ -265,6 +333,83 @@ def test_shared_preprocessing_and_fused_scores(full_case):
         list(streaming.training_options(settings, workers=1)["transformed_batches"]())
 
 
+def test_adaptive_sweep_resume_integrity_and_manifest(full_case, monkeypatch):
+    settings, hooks = full_case
+    settings["gmm_initializations"] = 2
+    streaming.prepare_training(settings, hooks)
+    streaming.fit_initialization_sweep(settings, hooks, cpus=3)
+    manifest = Path(settings["output_dir"]) / "initialization_sweep.json"
+    record = json.loads(manifest.read_text())
+    assert len(record["initializations"]) == 2
+    paths = [Path(path) for path in record["initializations"]]
+    timestamps = [path.stat().st_mtime_ns for path in paths]
+    original = streaming.fit_candidate_initialization
+    called = []
+
+    def counted(settings, components, seed, initialization, *args, **kwargs):
+        called.append((components, seed, initialization))
+        return original(settings, components, seed, initialization, *args, **kwargs)
+
+    monkeypatch.setattr(streaming, "fit_candidate_initialization", counted)
+    manifest.unlink()
+    streaming.fit_initialization_sweep(settings, hooks, cpus=1)
+    assert called == []
+    assert timestamps == [path.stat().st_mtime_ns for path in paths]
+    paths[0].write_bytes(b"interrupted model write")
+    streaming.fit_initialization_sweep(settings, hooks, cpus=1)
+    assert called == [(2, 42, 0)]
+    streaming.combine_candidate_initializations(settings, 2, settings["gmm_seed"], hooks)
+    Path(str(paths[1]) + ".json").write_text("{incomplete")
+    streaming.fit_initialization_sweep(settings, hooks, cpus=1)
+    assert called[-1] == (2, 42, 1)
+    assert not list(paths[0].parent.glob("*.tmp"))
+
+
+def test_sweep_infrastructure_failure_is_not_a_numerical_record(full_case, monkeypatch):
+    from concurrent.futures.process import BrokenProcessPool
+    import streaming_gmm
+
+    settings, hooks = full_case
+
+    def fail(*args, **kwargs):
+        raise BrokenProcessPool("injected broken pool")
+
+    monkeypatch.setattr(streaming_gmm, "fit_streaming_gmm", fail)
+    with pytest.raises(BrokenProcessPool, match="injected"):
+        streaming.fit_initialization_sweep(settings, hooks, cpus=3)
+    output = Path(settings["output_dir"])
+    assert not (output / "initialization_sweep.json").exists()
+    assert not streaming.candidate_initialization_path(settings, 2, 42, 0).exists()
+
+
+def test_interrupted_sweep_preserves_completed_starts_and_rejects_stale_records(
+        full_case, monkeypatch):
+    settings, hooks = full_case
+    settings["gmm_initializations"] = 2
+    original = streaming.fit_candidate_initialization
+
+    def interrupt(settings, components, seed, initialization, *args, **kwargs):
+        if initialization == 1:
+            raise OSError("injected interruption")
+        return original(settings, components, seed, initialization, *args, **kwargs)
+
+    monkeypatch.setattr(streaming, "fit_candidate_initialization", interrupt)
+    with pytest.raises(OSError, match="injected interruption"):
+        streaming.fit_initialization_sweep(settings, hooks, cpus=1)
+    completed = streaming.candidate_initialization_path(settings, 2, 42, 0)
+    timestamp = completed.stat().st_mtime_ns
+    manifest = Path(settings["output_dir"]) / "initialization_sweep.json"
+    assert not manifest.exists()
+    monkeypatch.setattr(streaming, "fit_candidate_initialization", original)
+    streaming.fit_initialization_sweep(settings, hooks, cpus=1)
+    assert completed.stat().st_mtime_ns == timestamp
+    hooks.provenance = lambda inputs, **kwargs: {"changed_scientific_profile": True}
+    streaming.fit_initialization_sweep(settings, hooks, cpus=1)
+    assert completed.stat().st_mtime_ns != timestamp
+    metadata = json.loads(Path(str(completed) + ".json").read_text())
+    assert metadata["provenance"] == {"changed_scientific_profile": True}
+
+
 def test_assignment_shards_match_unsplit_reference(full_case):
     settings, hooks = full_case
     model = ThresholdModel()
@@ -302,6 +447,7 @@ def test_assignment_shards_match_unsplit_reference(full_case):
 def test_diagnostic_aggregation_orders_plateau_and_missing_ari(full_case):
     settings, hooks = full_case
     settings["components"] = [2, 3]
+    write_candidate_summary(settings, (2, 3), write_models=False)
     for count, rmse in ((3, .999), (2, 1.)):
         runner.write(Path(settings["diagnostic_dir"]) / "component_parts" / f"k{count}.json", {
             "components": count, "provenance": {},
@@ -318,31 +464,27 @@ def test_diagnostic_aggregation_orders_plateau_and_missing_ari(full_case):
     assert rows[1]["criterion_adm_plateau"] == "True"
     assert all(row["ari_min"] == "nan" for row in rows)
     assert all(row["all_criteria"] == "False" for row in rows)
+    assert [float(row["full_heldout_loglik"]) for row in rows] == [-2., -3.]
+    assert [int(row["gmm_seed"]) for row in rows] == [42, 42]
+    assert all("full_heldout_loglik_seed_range" not in row for row in rows)
 
 
-def test_streamed_training_through_budget_and_plots(full_case, monkeypatch):
+def test_streamed_training_through_budget_and_plots(full_case, monkeypatch, tmp_path):
     settings, hooks = full_case
-    settings.update(seeds=[42, 73], folds=5,
+    settings.update(folds=5,
                     figure_dir=str(Path(settings["output_dir"])/"figures"),
                     diagnostic_figure_dir=str(Path(settings["diagnostic_dir"])/"figures"))
     hooks.ROOT = runner.ROOT
     output = Path(settings["output_dir"])
     settings.update(stability_max_points=200, stability_repeats=2, stability_seed=42)
     streaming.prepare_stability_sample(settings, hooks)
-    for seed in settings["seeds"]:
-        for initialization in range(settings["gmm_initializations"]):
-            streaming.fit_candidate_initialization(
-                settings, 2, seed, initialization, hooks,
-            )
-        streaming.combine_candidate_initializations(settings, 2, seed, hooks)
-    streaming.train(settings, hooks)
-    model = joblib.load(output/"spectral_gmm.joblib")["model"]
-    selection = json.loads((Path(settings["diagnostic_dir"])/"gmm_selection.json").read_text())
-    assert sum(selection["heldout_population_counts"]) == 2*(23*27-3)
-    scores = np.concatenate([model.score_samples(features)
-                             for features in streaming.feature_batches(settings, [246, 247])])
-    assert selection["heldout_log_density_p01"] == pytest.approx(np.quantile(scores, .01))
-    assert not (output/"heldout_density.npy").exists()
+    streaming.prepare_training(settings, hooks)
+    streaming.fit_initialization_sweep(settings, hooks, cpus=3)
+    streaming.combine_candidate_initializations(settings, 2, settings["gmm_seed"], hooks)
+    streaming.summarize_candidates(settings, hooks)
+    candidates = json.loads(streaming.candidates_path(settings).read_text())
+    assert len(candidates["candidates"]) == len(settings["components"])
+    assert {row["seed"] for row in candidates["candidates"]} == {settings["gmm_seed"]}
     coefficients = np.zeros(83)
     coefficients[0] = .5
     monkeypatch.setattr(streaming, "load_cubic_coefficients", lambda path: (coefficients, 100.))
@@ -355,14 +497,96 @@ def test_streamed_training_through_budget_and_plots(full_case, monkeypatch):
         return original_fit(settings, model, *args, **kwargs)
 
     monkeypatch.setattr(streaming, "fit_library", record_fit)
+    for day in settings["validation_days"]:
+        with Dataset(streaming.source_path(day), "r+") as source:
+            source["lza_G16_interp_corr"][1, 1] = 70.
+    # K-independent evidence first; train refuses until K is reviewed.
+    streaming.diagnostics(settings, config, hooks)
+    part = json.loads((Path(settings["diagnostic_dir"])/"component_parts/k2.json").read_text())
+    statistics = part["details"]["training"]
+    transformed_train = np.concatenate(list(
+        streaming.training_options(settings, workers=1)["transformed_batches"]()))
+    candidate = joblib.load(output/"candidate_k2_s42.joblib")
+    probabilities = candidate[-1].predict_proba(transformed_train)
+    entropy = -np.sum(probabilities * np.log(np.maximum(probabilities, 1e-300)))
+    assert statistics["points"] == len(transformed_train)
+    assert statistics["bic"] == pytest.approx(candidate[-1].bic(transformed_train))
+    assert statistics["icl"] == pytest.approx(statistics["bic"] + 2 * entropy)
+    original_batch_points = settings["batch_points"]
+    settings["batch_points"] = 19
+    chunked_statistics = streaming.full_training_statistics(settings, candidate)
+    settings["batch_points"] = original_batch_points
+    assert chunked_statistics["icl"] == pytest.approx(statistics["icl"], abs=1e-8)
+    candidate[0].mean_[0] += 1
+    with pytest.raises(ValueError, match="cache differs from the candidate preprocessing"):
+        streaming.full_training_statistics(settings, candidate)
+    candidate = joblib.load(output/"candidate_k2_s42.joblib")
+    details = part["details"]
+    assert len(details["bootstrap"]) == settings["stability_repeats"]
+    assert set(details["by_day"]) == {"246", "247"}
+    assert np.asarray(details["angular_bin_counts"]).shape == (2, 2, 7)
+    assert np.asarray(details["paired_angular_bin_counts"]).shape == (2, 7, 7)
+    assert np.asarray(details["scene_ratio_sensitivity_rms"]).shape == (2, 6)
+    angular_counts = np.asarray(details["angular_bin_counts"])
+    paired_counts = np.asarray(details["paired_angular_bin_counts"])
+    population = np.sum([day["scene_counts"] for day in details["by_day"].values()], axis=0)
+    np.testing.assert_array_equal(angular_counts.sum(axis=2), np.broadcast_to(population[:, None], (2, 2)))
+    np.testing.assert_array_equal(paired_counts.sum(axis=2), angular_counts[:, 0])
+    np.testing.assert_array_equal(paired_counts.sum(axis=1), angular_counts[:, 1])
+    assert angular_counts[:, 0, -1].sum() == 2  # Exactly 70 degrees is eligible.
+    pooled_bins = angular_counts.sum(axis=1).astype(float)
+    effective = pooled_bins.sum(axis=1)**2 / (pooled_bins**2).sum(axis=1)
+    assert part["row"]["minimum_effective_angular_bins"] == pytest.approx(effective.min())
+    library = joblib.load(streaming.adm_path(settings, 2))
+    sensitivity_square = np.zeros((2, 6))
+    for _, _, _, angles, _, features in streaming.paired_records(settings, settings["validation_days"]):
+        labels = candidate.predict(features)
+        basis = angular_basis(angles, "regularized")[..., 0]
+        derivative = ((basis[:, :1] - basis[:, 1:2]) /
+                      (1 + basis[:, 1:2] * library[labels, :, 0])**2)
+        for scene in range(2):
+            sensitivity_square[scene] += (derivative[labels == scene]**2).sum(axis=0)
+    np.testing.assert_allclose(details["scene_ratio_sensitivity_rms"],
+                               np.sqrt(sensitivity_square / population[:, None]))
+    assert part["row"]["minimum_effective_angular_bins"] >= 1
+    assert 0 <= part["row"]["heldout_normalized_entropy"] <= 1
+    assert 0 <= part["row"]["heldout_ambiguous_fraction"] <= 1
+    assert sum(day["points"] for day in details["by_day"].values()) == 2*(23*27-3)
+    pooled_mean = sum(day["points"]*day["bias"] for day in details["by_day"].values()) / (2*(23*27-3))
+    assert part["row"]["exact_corrected_flux_bias"] == pytest.approx(pooled_mean)
+    pooled_rmse_square = sum(
+        day["points"]*day["rmse"]**2 for day in details["by_day"].values()
+    ) / (2*(23*27-3))
+    assert part["row"]["exact_corrected_flux_rmse"]**2 == pytest.approx(pooled_rmse_square)
+    from scene_taxonomy import TaxonomySelectionError
+    hooks.SETTINGS = write_reviewed_taxonomy(settings, tmp_path, None)
+    with pytest.raises(TaxonomySelectionError, match="No GMM component count"):
+        streaming.train(settings, hooks)
+    hooks.SETTINGS = write_reviewed_taxonomy(settings, tmp_path, 2)
+    streaming.train(settings, hooks)
+    model_path = streaming.spectral_model_path(settings)
+    model = joblib.load(model_path)["model"]
+    metadata = json.loads(Path(str(model_path)+".json").read_text())
+    assert metadata["scene_taxonomy"]["n_components"] == 2
+    assert metadata["seed"] == json.loads(streaming.candidates_path(settings).read_text())[
+        "best_by_components"]["2"]["seed"]
+    selection = json.loads((Path(settings["diagnostic_dir"])/"gmm_selection.json").read_text())
+    assert sum(selection["heldout_population_counts"]) == 2*(23*27-3)
+    scores = np.concatenate([model.score_samples(features)
+                             for features in streaming.feature_batches(settings, [246, 247])])
+    assert selection["heldout_log_density_p01"] == pytest.approx(np.quantile(scores, .01))
+    assert not (output/"heldout_density.npy").exists()
     streaming.assignment(settings, hooks)
     streaming.spatial(settings, config, hooks)
-    streaming.diagnostics(settings, config, hooks)
     assert fitted_counts == [2]
     assert not list(output.glob("adm_*.npy"))
     diagnostic_metadata = json.loads((Path(settings["diagnostic_dir"])/
                                      "gmm_component_diagnostics.csv.json").read_text())
     assert "bootstrap refits" in diagnostic_metadata["reliability"]
+    assert diagnostic_metadata["diagnostic_schema_version"] == 2
+    assert diagnostic_metadata["component_details"]["2"]["heldout_day_log_likelihood"] == dict(zip(
+        ["246", "247"], candidates["candidates"][0]["heldout_day_log_likelihood"],
+    ))
     with (Path(settings["diagnostic_dir"])/"gmm_component_diagnostics.csv").open() as handle:
         diagnostic_rows = list(csv.DictReader(handle))
     assert np.isfinite(float(diagnostic_rows[0]["ari_min"]))
@@ -377,7 +601,8 @@ def test_streamed_training_through_budget_and_plots(full_case, monkeypatch):
     eco = amplitude[:, None, :]*(
         1 + angular_basis(angles, "regularized")[:, 0][None, :, None]*parameters[:, None, :])
     true_band = np.pi*amplitude*angular_integral(parameters[..., None], "regularized")
-    temperature = np.where(np.arange(n) % 2, 260., 240.)
+    # Cover write_abi's near-boundary pixels and its warmest rows.
+    temperature = np.resize([240., 249.95, 261.], n)
     abi = np.broadcast_to((20000./np.expm1(1300./temperature))[:, None, None],
                           (n, len(angles), 6)).copy()
     np.savez(output/"sunny.npz", eco_radiance=eco, abi_radiance=abi,

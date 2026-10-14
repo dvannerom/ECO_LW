@@ -10,12 +10,135 @@ from tempfile import TemporaryDirectory
 
 import joblib
 import numpy as np
+import pytest
 from sklearn.decomposition import PCA
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from threadpoolctl import threadpool_limits
 
 import streaming_gmm as streaming
+
+
+def test_mapped_tasks_send_only_descriptors_and_keep_chunk_order(tmp_path):
+    import pickle
+    data = np.random.default_rng(42).normal(size=(1001, 4))
+    path = tmp_path / "pca.npy"
+    np.save(path, data)
+    source = streaming.MappedTrainingData([path], 233, 4)
+    references = list(source.references(97))
+    assert [(ref.start, ref.stop) for ref in references[:4]] == [
+        (0, 97), (97, 194), (194, 233), (233, 330)]
+    assert sum(ref.stop - ref.start for ref in references) == len(data)
+    assert all(len(pickle.dumps(ref)) < 512 for ref in references)
+    model = GaussianMixture(n_components=1)
+    streaming._set_parameters(model, np.ones(1), np.zeros((1, 4)), np.eye(4)[None])
+    submitted = []
+    active = 0
+    maximum = 0
+    class Future:
+        def __init__(self, function, args):
+            self.function, self.args = function, args
+        def result(self):
+            nonlocal active
+            active -= 1
+            return self.function(*self.args)
+        def cancel(self):
+            return False
+    class Executor:
+        def submit(self, function, reference, parameters):
+            nonlocal active, maximum
+            assert isinstance(reference, streaming.MappedChunk)
+            assert function is streaming._mapped_chunk_statistics
+            active += 1
+            maximum = max(maximum, active)
+            submitted.append(reference)
+            return Future(function, (reference, parameters))
+    stats = list(streaming._bounded_statistics(iter(references), model, Executor(), 3))
+    assert submitted == references
+    assert maximum == 3
+    assert active == 0
+    for ref, result in zip(references, stats):
+        expected = streaming._chunk_statistics(data[ref.start:ref.stop], model)
+        for left, right in zip(result, expected):
+            np.testing.assert_array_equal(left, right)
+
+
+def test_mapped_cache_errors_are_explicit(tmp_path):
+    path = tmp_path / "pca.npy"
+    np.save(path, np.zeros((31, 4), dtype=np.float32))
+    with pytest.raises(ValueError, match="Invalid transformed"):
+        streaming.MappedTrainingData([path], 10, 4)
+    with pytest.raises(FileNotFoundError):
+        streaming.MappedTrainingData([tmp_path / "missing.npy"], 10, 4)
+    values = np.zeros((31, 4))
+    values[15, 2] = np.nan
+    np.save(path, values)
+    source = streaming.MappedTrainingData([path], 10, 4)
+    model = GaussianMixture(n_components=1)
+    streaming._set_parameters(model, np.ones(1), np.zeros((1, 4)), np.eye(4)[None])
+    with pytest.raises(ValueError, match="Non-finite transformed"):
+        list(streaming._bounded_statistics(source.references(7), model, None, 1))
+    streaming._mapped_file.cache_clear()
+    replacement = tmp_path / "replacement.npy"
+    np.save(replacement, np.zeros((31, 4)))
+    replacement.replace(path)
+    with pytest.raises(ValueError, match="changed before mapping"):
+        streaming._mapped_chunk_statistics(next(source.references(7)), model)
+
+
+def test_mapped_population_validation_and_uncached_execution(tmp_path):
+    data = features(200)
+    preprocessing = streaming.prepare_streaming_preprocessing(factory(data))
+    _, scaler, pca = preprocessing
+    path = tmp_path / "pca.npy"
+    np.save(path, pca.transform(scaler.transform(data))[:100])
+    mapped = streaming.MappedTrainingData([path], 31, pca.n_components_)
+    with pytest.raises(ValueError, match="population or dimensions"):
+        streaming.fit_streaming_gmm(
+            factory(data), 2, 42, preprocessor=preprocessing, mapped_data=mapped)
+    with pytest.raises(ValueError, match="requires preprocessor"):
+        streaming.fit_streaming_gmm(factory(data), 2, 42, mapped_data=mapped)
+    with pytest.raises(ValueError, match="no transformed_batches"):
+        streaming.fit_streaming_gmm(
+            factory(data), 2, 42, preprocessor=preprocessing, mapped_data=mapped,
+            transformed_batches=lambda: iter([]))
+    with pytest.raises(TypeError, match="MappedTrainingData"):
+        streaming.fit_streaming_gmm(factory(data), 2, 42, mapped_data=object())
+
+
+def test_mapped_fit_with_owned_process_pool_bypasses_raw_features(tmp_path):
+    data = features(501)
+    with threadpool_limits(limits=1):
+        preprocessing = streaming.prepare_streaming_preprocessing(factory(data), chunk_rows=37)
+        _, scaler, pca = preprocessing
+        transformed = pca.transform(scaler.transform(data))
+        path = tmp_path / "pca.npy"
+        np.save(path, transformed)
+        source = streaming.MappedTrainingData([path], 97, pca.n_components_)
+        def unreadable():
+            raise AssertionError("Prepared PCA source must bypass raw features")
+        reference = streaming.fit_streaming_gmm(
+            unreadable, 1, 42, chunk_rows=37, preprocessor=preprocessing,
+            transformed_batches=factory(transformed, 97))
+        result = streaming.fit_streaming_gmm(
+            unreadable, 1, 42, chunk_rows=37, preprocessor=preprocessing,
+            mapped_data=source, workers=3)
+        for name in ("weights_", "means_", "covariances_", "lower_bounds_"):
+            np.testing.assert_array_equal(getattr(reference[-1], name), getattr(result[-1], name))
+
+
+def test_pass_heartbeat_reports_exact_partial_population(monkeypatch):
+    data = features(200)
+    events = []
+    ticks = iter(range(0, 100000, 31))
+    monkeypatch.setattr(streaming.time, "monotonic", lambda: next(ticks))
+    streaming.fit_streaming_gmm(factory(data), 1, 42, chunk_rows=37,
+                               event_callback=events.append)
+    heartbeat = [event for event in events if event["event"] == "pass_progress"]
+    assert heartbeat
+    assert all(0 < event["processed_pixels"] <= 200 for event in heartbeat)
+    assert all(event["population"] == 200 for event in heartbeat)
+    assert all(event["duration_seconds"] >= 30 for event in heartbeat)
 
 
 def features(rows=800, seed=53):
