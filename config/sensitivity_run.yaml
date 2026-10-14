@@ -1,34 +1,57 @@
-schema_version: 1
-output_dir: data/uncertainty_runs/first_draft
-figure_dir: figures/uncertainty/sensitivity
-training_days: [245, 247]
-evaluation_days: [246, 252]
-seed: 42
-realizations: 5
-abi:
-  tiles_per_day: 12
-  tile_size: 100
-  halo: 20
-  max_candidate_tiles: 600
-  minimum_valid_fraction: 0.8
-  training_points: 20000
-  components: [6, 7]
-  baseline_components: 7
-  block_size: 5
-  second_choice_fraction: 0.10
-  maximum_vza_deg: 70
-  gmm_initializations: 2
+# Production-aligned sensitivity study (schema 2).
+#
+# Each variant changes exactly ONE choice of what `snakemake all` runs:
+#   ABI   baseline = the written daily products (pooled held-in adm_k{K},
+#         regularized, VZA <= 70 deg, cubic N2B, float32 BT), recomputed on
+#         every native pixel of every configured day; it must close on the
+#         written broadband_flux files within closure_tolerance_w_m2.
+#   Sunny baseline = the nominal grouped held-out estimator (ECO goal
+#         channels); it must close on the nominal residuals.npz.
+# K, days, folds and the Sunny scenario come from the nominal settings and
+# config/scene_taxonomy.yaml, never from here. Spatial, radiometric and
+# assignment terms have a single source: the nominal budget report.
+schema_version: 2
+output_dir: data/uncertainty/sensitivity
+figure_dir: figures/nominal_production/uncertainties/sensitivity
+
+# Paired-difference aggregation: native 2 km pixels, 10 km cells (5x5 blocks)
+# for daily and monthly cell-mean differences. chunk_rows must be a multiple
+# of the cell block; per-slab memory ~ chunk_rows x 12475 x 6 x 8 B per array.
+cell_km: 10
+chunk_rows: 100
+closure_tolerance_w_m2: 0.01
+# Fraction of mid-disk pixels whose feature-based relabelling may differ from
+# the production scene_id labels (guards the K+-1 relabelling path).
+label_mismatch_tolerance: 1.0e-4
+vza_bin_edges_deg: [0, 10, 20, 30, 40, 50, 60, 70]
+
+abi_variants:
+  - components_minus_1
+  - components_plus_1
+  - adm_daily
+  - adm_quadratic
+  - n2b_quadratic
+
+sunny_variants:
+  - n2bc_stratified
+  - n2bc_robust
+  - n2bc_degree3
+  - adm_per_file
+  - adm_quadratic
+  - components_minus_1
+  - components_plus_1
+
 sunny:
-  scenario: rfma_goal_6
-  folds: 5
-  degree: 2
-  training_mode: clear_cloud_stratified
-  noise_requirement: goal
-  robust_huber_cutoff: 1.5
+  closure_tolerance_w_m2: 1.0e-6
+  robust_huber_cutoff: 1.345
   robust_max_iterations: 200
-  robust_tolerance: 0.00001
+  robust_tolerance: 1.0e-6
+
 scope: >-
-  First-draft temporal holdout on sampled, complete equal-area ABI footprints,
-  with production spectral and texture features. Full Sunny library and
-  configured idealized angular geometry. Not a global climatological sample
-  or complete mission uncertainty budget.
+  One-at-a-time model-choice sensitivities around the production configuration.
+  ABI variants are paired differences over the full ABI population of the
+  configured days (held-in and held-out reported separately) and propagate to
+  daily and monthly 10 km cell means. Sunny variants are paired differences
+  and truth errors of the nominal ECO-goal-channel estimator. They bound
+  model-choice dependence; they are not independent uncertainty terms and are
+  not summed.

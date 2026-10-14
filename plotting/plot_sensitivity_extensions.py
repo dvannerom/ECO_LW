@@ -1,4 +1,4 @@
-"""Figures for equal-weight ECO geometry and nested assignment stress."""
+"""Figure for the equal-weight ECO multi-view geometry diagnostic."""
 
 import argparse
 import json
@@ -16,7 +16,7 @@ import numpy as np
 from uncertainty import check_provenance
 
 
-def plot_reports(geometry, assignment, directory):
+def plot_reports(geometry, directory):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     figure, axes = plt.subplots(1, 3, figsize=(19, 6), constrained_layout=True)
@@ -64,44 +64,19 @@ def plot_reports(geometry, assignment, directory):
     )
     figure.savefig(directory / "eco_geometry.png", dpi=170)
     plt.close(figure)
-    figure, axes = plt.subplots(1, 2, figsize=(13, 6), constrained_layout=True)
-    for seed in assignment["settings"]["assignment_seeds"]:
-        rows = sorted([row for row in assignment["rows"] if row["seed"] == seed],
-                      key=lambda row: row["fraction"])
-        x = [100*row["fraction"] for row in rows]
-        for axis, metric in zip(axes, ("rmse", "bias")):
-            axis.plot(x, [row["w_m2"]["estimate"][metric] for row in rows],
-                      "o-", label=f"Seed {seed}")
-            bounds = np.array([row["w_m2"]["intervals"][metric] for row in rows])
-            axis.vlines(x, bounds[:, 0], bounds[:, 1], alpha=.25)
-            axis.set_ylabel(f"Paired broadband {metric.upper()} (W m$^{{-2}}$)")
-            axis.set_xlabel("Native pixels assigned second GMM choice (%)")
-            axis.set_xticks(x)
-            axis.grid(alpha=.2)
-            axis.legend()
-    figure.suptitle(
-        "ABI assignment stress response: fixed models and held-out footprint population\n"
-        "Nested switch sets; exploratory 95% day/tile intervals; not misclassification probabilities"
-    )
-    figure.savefig(directory / "assignment_curve.png", dpi=170)
-    plt.close(figure)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--geometry", required=True)
-    parser.add_argument("--assignment", required=True)
     args = parser.parse_args()
-    reports = []
-    for path in (args.geometry, args.assignment):
-        with Path(path).open() as source:
-            report = json.load(source)
-        freshness = check_provenance(report["provenance"], ROOT)
-        if freshness["status"] != "current":
-            raise ValueError(f"Stale extension report: {freshness}")
-        reports.append(report)
+    with Path(args.geometry).open() as source:
+        report = json.load(source)
+    freshness = check_provenance(report["provenance"], ROOT)
+    if freshness["status"] != "current":
+        raise ValueError(f"Stale extension report: {freshness}")
     from figure_layout import figure_path
-    plot_reports(*reports, figure_path(reports[0]["settings"]["figure_dir"]))
+    plot_reports(report, figure_path(report["settings"]["figure_dir"]))
 
 
 if __name__ == "__main__":

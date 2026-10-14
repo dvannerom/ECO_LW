@@ -10,7 +10,7 @@ from scipy.integrate import simpson
 from adm import radiance_linear
 from sensitivity import (
     angular_basis, angular_integral, block_mean, fit_scene_adm, paired_summary,
-    planck_derivative, read_settings, retrieve_sunny, summary, switch_labels,
+    planck_derivative, retrieve_sunny, summary, switch_labels,
     tile_features,
 )
 from scene_features import build_scene_features
@@ -137,8 +137,3 @@ def test_pooled_regularized_adm_is_positive_even_for_inadmissible_input_shape():
     fitted = fit_scene_adm(angles, radiance, "regularized")
     assert angular_integral(fitted, "regularized") > 0
     assert np.all(1 + angular_basis(np.linspace(0, 90, 901), "regularized") @ fitted > 0)
-
-def test_settings_holdout_and_halo():
-    settings = read_settings(Path(__file__).resolve().parents[1] / "config/sensitivity_run.yaml")
-    assert not set(settings["training_days"]) & set(settings["evaluation_days"])
-    assert settings["abi"]["halo"] >= 4 * settings["abi"]["block_size"]

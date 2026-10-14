@@ -4,22 +4,23 @@ import yaml
 import sys
 sys.path.insert(0, str(Path("src").resolve()))
 from figure_layout import figure_path
+from scene_taxonomy import load_scene_taxonomy
 
 
-SELECTION_PATH = Path(config["selected_n_components_file"])
-if SELECTION_PATH.exists():
-    with SELECTION_PATH.open() as handle:
-        selected_n_components = json.load(handle)["n_components"]
-else:
-    selected_n_components = config["scene_components"]
+# One shared spectral-only taxonomy (config/scene_taxonomy.yaml). Its K is a
+# reviewed manual choice; until it is recorded, only K-independent targets
+# (e.g. gmm_selection_diagnostics) can run and SCENE_TAXONOMY_GATE fails.
+SCENE_TAXONOMY_FILE = config.get("scene_taxonomy_file", "config/scene_taxonomy.yaml")
+SCENE_TAXONOMY = load_scene_taxonomy(SCENE_TAXONOMY_FILE)
+SCENE_TAXONOMY_SELECTED = SCENE_TAXONOMY["selection"]["n_components"] is not None
+# Placeholder K only names paths; every K-dependent rule requires the gate.
+SCENE_COMPONENTS = int(SCENE_TAXONOMY["selection"]["n_components"] or 2)
+SCENE_TAXONOMY_GATE = "data/models/scene_taxonomy_gate.json"
 
 DAYS = [int(day) for day in config["days"]]
 RESOLUTION = int(config["resolution_km"])
 STEP = int(config["preprocess_step"])
-SCENE_COMPONENTS = int(selected_n_components)
-SELECTED_N_COMPONENTS_FILE = config["selected_n_components_file"]
 TRAINING_FILES = config["training_files"]
-MODEL = f"data/models/gmm_pipeline_merged_{len(TRAINING_FILES)}files_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.joblib"
 SUNNY_DIR = config["sunny_dir"]
 GOES_FILTER_DIR = config["goes_filter_dir"]
 ECO_CHANNEL_SCENARIOS_FILE = config["eco_channel_scenarios_file"]
@@ -38,15 +39,35 @@ with open(SENS_SETTINGS) as sensitivity_handle:
     SENS = yaml.safe_load(sensitivity_handle)
 SENS_DIR = SENS["output_dir"]
 SENS_REPORT = f"{SENS_DIR}/sensitivity_report.json"
-USE_SENSITIVITY = config.get("uncertainty_sensitivity", Path(SENS_REPORT).exists())
+# Keep model-selection diagnostics opt-in. The default production profile
+# contains only the reviewed K and the configured K-1/K+1 sensitivity fits.
+NOMINAL_SETTINGS_PATH = config.get(
+    "nominal_budget_settings", "config/nominal_budget_production.yaml"
+)
+with open(NOMINAL_SETTINGS_PATH) as nominal_settings_handle:
+    NOMINAL_SETTINGS_CONFIG = yaml.safe_load(nominal_settings_handle)
+# Shared scene model: {"model": scaler/PCA/GMM Pipeline on 10 spectral features}.
+MODEL = NOMINAL_SETTINGS_CONFIG.get(
+    "model_path", f"{NOMINAL_SETTINGS_CONFIG['output_dir']}/spectral_gmm.joblib"
+)
+# Production ADM: pooled held-in full-population library adm_k{K} (K, 6, 1),
+# fit with the same taxonomy as MODEL (rules in nominal_budget.smk).
+PRODUCTION_ADM_DIR = f"{NOMINAL_SETTINGS_CONFIG['output_dir']}/component_adms"
+PRODUCTION_MAX_VZA_DEG = 70.0
+PRODUCTION_CODE = ["src/abi_product.py", "src/broadband.py", "src/sensitivity.py"]
+NOMINAL_BUDGET_REPORT = (
+    f"{NOMINAL_SETTINGS_CONFIG['output_dir']}/budget_report.json"
+)
+NOMINAL_BUDGET_FIGURE = (
+    f"{NOMINAL_SETTINGS_CONFIG['figure_dir']}/eco_uncertainty_numerical_budget.png"
+)
 ECO_SPECTRAL_FIGURE_DIR = str(figure_path(config["output"]["eco_spectral_figures"][0]).parent)
 ECO_SPECTRAL_FIGURES = [str(figure_path(path)) for path in config["output"]["eco_spectral_figures"]]
 UNCERTAINTY_FIGURES = [
-    str(figure_path(f"figures/uncertainty/eco_uncertainty_{name}.png"))
-    for name in (
-        "evidence_map", "residual_summary", "variance_decomposition",
-        "numerical_budget", "scenario_budgets", "channel_diagnostics",
-    )
+    str(figure_path(
+        "figures/nominal_production/diagnostics/uncertainty/"
+        "eco_uncertainty_variance_decomposition.png"
+    ))
 ]
 with open(ECO_CHANNEL_SCENARIOS_FILE) as scenario_handle:
     ECO_SCENARIOS = list(yaml.safe_load(scenario_handle)["scenarios"])
@@ -87,10 +108,6 @@ def scene_id(day):
     return f"data/scene_id/scene_id_{day}_res{RESOLUTION}km_{SCENE_COMPONENTS}comp.nc"
 
 
-def adm(day, channel, scene):
-    return f"data/ADM/ADM_{day}_res{RESOLUTION}km_C{channel}_scene{scene}.nc"
-
-
 def narrowband(day, channel):
     return f"data/narrowband_flux/narrowband_flux_{day}_res{RESOLUTION}km_C{channel}.nc"
 
@@ -102,23 +119,30 @@ def broadband(day):
 BROADBAND_OUTPUTS = [broadband(day) for day in DAYS]
 SCENE_ID_OUTPUTS = [scene_id(day) for day in DAYS]
 NARROWBAND_OUTPUTS = [narrowband(day, channel) for day in DAYS for channel in range(6)]
-ABI_ADM_OUTPUTS = [
-    adm(day, channel, scene)
-    for day in DAYS
-    for channel in range(6)
-    for scene in range(SCENE_COMPONENTS)
+ABI_PRODUCTION_OUTPUTS = [
+    config["output"]["monthly"],
+    MODEL,
+    CHANNEL_POWER_LAW_FILE,
+    NARROWBAND_TO_BROADBAND_COEFFS_FILE,
+    *BROADBAND_OUTPUTS,
+]
+PRODUCTION_ADM = f"{PRODUCTION_ADM_DIR}/adm_k{SCENE_COMPONENTS}.joblib"
+DAILY_ADM_OUTPUTS = [
+    f"{PRODUCTION_ADM_DIR}/daily/adm_k{SCENE_COMPONENTS}_day{day}.joblib" for day in DAYS
 ]
 SCENE_ID_DIAGNOSTIC_DAY = int(config.get("scene_id_diagnostic_day", DAYS[-1]))
 if SCENE_ID_DIAGNOSTIC_DAY not in DAYS:
     raise ValueError("scene_id_diagnostic_day must be included in config['days']")
 SCENE_ID_DIAGNOSTIC_FIGURE = (
-    f"figures/diagnostics/scene_id/scene_id_{SCENE_ID_DIAGNOSTIC_DAY}_res{RESOLUTION}km_"
+    f"figures/abi_proxy/diagnostics/scene_id/scene_id_{SCENE_ID_DIAGNOSTIC_DAY}_res{RESOLUTION}km_"
     f"{SCENE_COMPONENTS}comp.png"
 )
 
 
 rule all:
     input:
+        # Before K is reviewed, run the K-independent evidence and stop at the gate.
+        *([] if SCENE_TAXONOMY_SELECTED else [SCENE_TAXONOMY_GATE]),
         ECO_SPECTRAL_METRICS,
         ECO_SPECTRAL_RESIDUALS,
         ABI_ADM_PROXY_SUMMARY,
@@ -127,7 +151,13 @@ rule all:
         *UNCERTAINTY_FIGURES,
         *ECO_SPECTRAL_FIGURES,
         *SCENE_ID_OUTPUTS,
-        *NARROWBAND_OUTPUTS
+        *NARROWBAND_OUTPUTS,
+        *ABI_PRODUCTION_OUTPUTS,
+        SENS_REPORT,
+        f"{SENS['figure_dir']}/broadband_sensitivity.png",
+        f"{SENS['figure_dir']}/monthly_difference_maps.png",
+        NOMINAL_BUDGET_REPORT,
+        NOMINAL_BUDGET_FIGURE,
 
 
 rule abi_scene_id_development:
@@ -195,42 +225,23 @@ rule abi_proxy_adm_corrected_narrowband_inputs:
         narrowbands=NARROWBAND_OUTPUTS
 
 
-rule default_scene_component_selection:
+rule check_scene_taxonomy:
+    input:
+        taxonomy=SCENE_TAXONOMY_FILE,
+        diagnostics=SCENE_TAXONOMY["diagnostics"]["csv"],
+        code=["scripts/check_scene_taxonomy.py", "src/scene_taxonomy.py"]
     output:
-        SELECTED_N_COMPONENTS_FILE
+        SCENE_TAXONOMY_GATE
     params:
-        n_components=int(config["scene_components"])
-    run:
-        with open(output[0], "w") as handle:
-            json.dump({"n_components": params.n_components, "source": "config.yaml"}, handle)
+        settings=NOMINAL_SETTINGS_PATH
+    shell:
+        "python scripts/check_scene_taxonomy.py --taxonomy {input.taxonomy:q} "
+        "--active-settings {params.settings:q} --output {output:q}"
 
 
 rule all_goes_proxy:
     input:
-        config["output"]["monthly"],
-        MODEL,
-        CHANNEL_POWER_LAW_FILE,
-        NARROWBAND_TO_BROADBAND_COEFFS_FILE,
-        *BROADBAND_OUTPUTS
-
-
-rule train_scene_model:
-    threads: config.get("gmm_jobs", 5)
-    input:
-        training=TRAINING_FILES,
-        selection=SELECTED_N_COMPONENTS_FILE
-    output:
-        MODEL
-    params:
-        components=SCENE_COMPONENTS,
-        n_components_file=SELECTED_N_COMPONENTS_FILE,
-        points_per_file=config.get("training_points_per_file", 2_000_000),
-        seed=config.get("training_seed", 42),
-        gmm_jobs=config.get("gmm_jobs", 5)
-    shell:
-        "PYTHONPATH=src python -u scripts/train_GMM.py --input_file {input.training} --n_components {params.components} "
-        "--n_components_file {params.n_components_file} --points_per_file {params.points_per_file} "
-        "--seed {params.seed} --gmm_jobs {params.gmm_jobs} --use_pca"
+        ABI_PRODUCTION_OUTPUTS
 
 
 rule preprocess:
@@ -249,14 +260,16 @@ rule preprocess:
 rule classify_scene:
     input:
         data=lambda wildcards: preprocessed(wildcards.day),
-        model=MODEL
+        model=MODEL,
+        gate=SCENE_TAXONOMY_GATE,
+        code=["scripts/scene_id_pca.py", "src/scene_features.py"]
     output:
         "data/scene_id/scene_id_{day}_res" + str(RESOLUTION) + "km_" + str(SCENE_COMPONENTS) + "comp.nc"
     params:
         lambda_center=float(config["lambda_center"])
     shell:
         "PYTHONPATH=src python scripts/scene_id_pca.py --input_file {input.data} "
-        "--model {input.model} --lambda_center {params.lambda_center}"
+        "--model {input.model} --gate {input.gate} --lambda_center {params.lambda_center}"
 
 
 rule plot_proxy_scene_id:
@@ -272,38 +285,14 @@ rule plot_proxy_scene_id:
         "--lambda-center {params.lambda_center}"
 
 
-rule fit_adm:
-    input:
-        data=lambda wildcards: preprocessed(wildcards.day),
-        scene=lambda wildcards: scene_id(wildcards.day),
-        adm_module="src/adm.py",
-        fitting_module="src/adm_fitting.py"
-    output:
-        adms=expand(
-            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.nc",
-            channel=range(6),
-            scene=range(SCENE_COMPONENTS),
-        )
-    params:
-        resolution=RESOLUTION,
-        n_components=SCENE_COMPONENTS
-    shell:
-        "mkdir -p data/.workflow && "
-        "PYTHONPATH=src python scripts/fit_ADM.py --day {wildcards.day} "
-        "--resolution {params.resolution} --n-components {params.n_components} "
-        "&& "
-        "touch data/.workflow/adm_{wildcards.day}_complete"
-
-
 rule radiance_to_flux:
     input:
         data=lambda wildcards: preprocessed(wildcards.day),
         scene=lambda wildcards: scene_id(wildcards.day),
-        adm=expand(
-            "data/ADM/ADM_{{day}}_res" + str(RESOLUTION) + "km_C{channel}_scene{scene}.nc",
-            channel=range(6),
-            scene=range(SCENE_COMPONENTS),
-        )
+        library=PRODUCTION_ADM,
+        library_metadata=PRODUCTION_ADM + ".json",
+        gate=SCENE_TAXONOMY_GATE,
+        code=PRODUCTION_CODE
     output:
         narrowbands=expand(
             "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.nc",
@@ -312,13 +301,15 @@ rule radiance_to_flux:
     params:
         resolution=RESOLUTION,
         n_components=SCENE_COMPONENTS,
+        max_vza=PRODUCTION_MAX_VZA_DEG,
         lambda_center=float(config["lambda_center"])
+    resources:
+        mem_mb=4096
     shell:
-        "mkdir -p data/.workflow && "
         "PYTHONPATH=src python scripts/radiance_to_flux.py --day {wildcards.day} "
         "--resolution {params.resolution} --n-components {params.n_components} "
-        "--lambda_center {params.lambda_center} && "
-        "touch data/.workflow/radiance_to_flux_{wildcards.day}_complete"
+        "--adm-library {input.library:q} --max-vza {params.max_vza} "
+        "--lambda_center {params.lambda_center}"
 
 
 rule build_uncertainty_registry:
@@ -328,26 +319,32 @@ rule build_uncertainty_registry:
         n2bc_metrics=ECO_N2BC_METRICS,
         adm_metrics=ECO_ADM_METRICS,
         abi_summary=ABI_ADM_PROXY_SUMMARY,
+        abi_narrowbands=NARROWBAND_OUTPUTS,
+        abi_broadbands=BROADBAND_OUTPUTS,
+        abi_monthly=config["output"]["monthly"],
+        abi_sensitivity=SENS_REPORT,
+        nominal_budget=NOMINAL_BUDGET_REPORT,
+        scene_taxonomy_gate=SCENE_TAXONOMY_GATE,
         scenarios=ECO_CHANNEL_SCENARIOS_FILE,
         error_budget="config/error_budget.yaml",
         registry_builder="scripts/build_uncertainty_registry.py",
-        uncertainty_module="src/uncertainty.py",
-        layout="src/figure_layout.py"
+        uncertainty_module="src/uncertainty.py"
     output:
         registry=UNCERTAINTY_REGISTRY,
         report=UNCERTAINTY_GAP_REPORT
-    params:
-        figures=UNCERTAINTY_FIGURES[:3],
-        numerical_figures=UNCERTAINTY_FIGURES[3:]
     shell:
         "PYTHONPATH=src python {input.registry_builder} "
         "--metrics {input.metrics} --residuals {input.residuals} "
         "--n2bc-metrics {input.n2bc_metrics} --adm-metrics {input.adm_metrics} "
         "--abi-summary {input.abi_summary} --scenarios {input.scenarios} "
+        "--abi-narrowband-products {input.abi_narrowbands:q} "
+        "--abi-daily-products {input.abi_broadbands:q} "
+        "--abi-monthly-product {input.abi_monthly:q} "
+        "--abi-sensitivity-report {input.abi_sensitivity:q} "
+        "--nominal-budget-report {input.nominal_budget:q} "
+        "--scene-taxonomy-gate {input.scene_taxonomy_gate:q} "
         "--error-budget {input.error_budget} "
-        "--registry-output {output.registry} --report-output {output.report} "
-        "--figure-paths {params.figures} "
-        "--numerical-figure-paths {params.numerical_figures}"
+        "--registry-output {output.registry} --report-output {output.report}"
 
 
 rule uncertainty_assessment:
@@ -362,40 +359,32 @@ rule plot_uncertainty_registry:
         registry=UNCERTAINTY_REGISTRY,
         plotter="plotting/plot_uncertainty_registry.py",
         experiments="config/uncertainty_experiments.yaml",
-        sensitivity=[SENS_REPORT] if USE_SENSITIVITY else [],
+        sensitivity=SENS_REPORT,
         uncertainty_module="src/uncertainty.py",
         layout="src/figure_layout.py"
     output:
-        evidence_map=UNCERTAINTY_FIGURES[0],
-        residual_summary=UNCERTAINTY_FIGURES[1],
-        variance_decomposition=UNCERTAINTY_FIGURES[2],
-        numerical_budget=UNCERTAINTY_FIGURES[3],
-        scenario_budgets=UNCERTAINTY_FIGURES[4],
-        channel_diagnostics=UNCERTAINTY_FIGURES[5],
+        variance_decomposition=UNCERTAINTY_FIGURES[0],
         budget_csv="docs/Uncertainty budget and propagation for ECO_LW - Sheet1.csv"
     params:
         scenario=config.get("uncertainty_panel", {}).get("scenario", "rfma_goal_6"),
-        mode=config.get("uncertainty_panel", {}).get("training_mode", "clear_cloud_stratified"),
+        mode=config.get("uncertainty_panel", {}).get("training_mode", "abi_population_weighted"),
         degree=config.get("uncertainty_panel", {}).get("degree", 2),
-        sensitivity=f"--sensitivity-report {SENS_REPORT}" if USE_SENSITIVITY else ""
+        sensitivity=f"--sensitivity-report {SENS_REPORT}"
     shell:
         "python {input.plotter} --registry {input.registry} "
         "--experiment-spec {input.experiments:q} --budget-csv {output.budget_csv:q} "
         "{params.sensitivity} "
-        "--evidence-map {output.evidence_map} "
-        "--residual-summary {output.residual_summary} "
         "--variance-decomposition {output.variance_decomposition} "
-        "--numerical-budget {output.numerical_budget} "
-        "--scenario-budgets {output.scenario_budgets} "
-        "--channel-diagnostics {output.channel_diagnostics} "
         "--budget-scenario {params.scenario} --training-mode {params.mode} "
         "--degree {params.degree}"
 
 
 rule summarize_abi_adm_proxy:
     input:
-        adms=ABI_ADM_OUTPUTS,
+        adms=DAILY_ADM_OUTPUTS,
+        metadata=[path + ".json" for path in DAILY_ADM_OUTPUTS],
         summarizer="scripts/summarize_abi_adm_proxy.py",
+        code=PRODUCTION_CODE,
         uncertainty_module="src/uncertainty.py",
         error_budget="config/error_budget.yaml"
     output:
@@ -418,7 +407,10 @@ rule fit_eco_n2bc_coefficients:
         error_budget="config/error_budget.yaml",
         evaluator="scripts/evaluate_eco_spectral_reconstruction.py",
         response_module="src/eco_spectral_response.py",
-        uncertainty_module="src/uncertainty.py"
+        nominal_module="src/nominal_budget.py",
+        uncertainty_module="src/uncertainty.py",
+        scene_model=MODEL,
+        sunny_abi=f"{NOMINAL_SETTINGS_CONFIG['output_dir']}/sunny.npz"
     output:
         models=ECO_N2BC_MODELS,
         metrics=ECO_N2BC_METRICS
@@ -428,12 +420,15 @@ rule fit_eco_n2bc_coefficients:
         "PYTHONPATH=src python {input.evaluator} --stage fit-n2bc "
         "--sunny-dir {input.sunny} --channel-scenarios {input.scenarios} "
         "--error-budget {input.error_budget} --folds {params.folds} "
+        "--scene-model {input.scene_model} --sunny-abi {input.sunny_abi} "
         "--n2bc-models-output {output.models} --n2bc-metrics-output {output.metrics}"
 
 
 rule retrieve_eco_adm_flux:
     input:
         sunny=SUNNY_DIR,
+        scene_model=MODEL,
+        sunny_abi=f"{NOMINAL_SETTINGS_CONFIG['output_dir']}/sunny.npz",
         scenarios=ECO_CHANNEL_SCENARIOS_FILE,
         evaluator="scripts/evaluate_eco_spectral_reconstruction.py",
         response_module="src/eco_spectral_response.py",
@@ -447,6 +442,7 @@ rule retrieve_eco_adm_flux:
     shell:
         "PYTHONPATH=src python {input.evaluator} --stage retrieve-adm "
         "--sunny-dir {input.sunny} --channel-scenarios {input.scenarios} "
+        "--scene-model {input.scene_model} --sunny-abi {input.sunny_abi} "
         "--adm-output-dir {params.adm_dir} --adm-metrics-output {output.metrics}"
 
 
@@ -521,12 +517,12 @@ rule fit_narrowband_to_broadband_coeffs:
 
 rule narrowband_to_broadband:
     input:
-        data=lambda wildcards: preprocessed(wildcards.day),
         narrowbands=expand(
             "data/narrowband_flux/narrowband_flux_{{day}}_res" + str(RESOLUTION) + "km_C{channel}.nc",
             channel=range(6),
         ),
-        coefficients=NARROWBAND_TO_BROADBAND_COEFFS_FILE
+        coefficients=NARROWBAND_TO_BROADBAND_COEFFS_FILE,
+        code=PRODUCTION_CODE
     output:
         "data/broadband_flux/broadband_flux_{day}_res" + str(RESOLUTION) + "km.nc"
     params:
@@ -535,7 +531,7 @@ rule narrowband_to_broadband:
     shell:
         "PYTHONPATH=src python scripts/narrowband_to_broadband.py --day {wildcards.day} "
         "--resolution {params.resolution} --lambda_center {params.lambda_center} "
-        "--coefficients-file {input.coefficients}"
+        "--coefficients-file {input.coefficients} --form cubic"
 
 
 rule monthly_flux:
@@ -553,7 +549,6 @@ rule monthly_flux:
         "--resolution {params.resolution} --lambda-center {params.lambda_center}"
 
 
-include: "uncertainty_sensitivity.smk"
-include: "uncertainty_convergence.smk"
-include: "uncertainty_extensions.smk"
 include: "nominal_budget.smk"
+include: "uncertainty_sensitivity.smk"
+include: "uncertainty_extensions.smk"

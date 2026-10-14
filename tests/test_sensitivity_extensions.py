@@ -1,4 +1,4 @@
-"""Physical closure, rank exclusions and nested assignment controls."""
+"""Physical closure, rank exclusions and nominal-model reuse of the geometry diagnostic."""
 
 import importlib.util
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from geometry_sensitivity import nested_switch_order, retrieve_geometry
+from geometry_sensitivity import retrieve_geometry
 from sensitivity import angular_basis, angular_integral
 
 
@@ -64,28 +64,37 @@ def test_reported_noise_gain_matches_flux_derivatives():
     )
 
 
-def test_assignment_curve_has_exact_nested_counts_and_zero_closure():
-    posterior = np.tile([.1, .2, .7], (101, 1))
-    first, second, order = nested_switch_order(posterior, 42)
-    assert np.all(first == 2) and np.all(second == 1)
-    previous = set()
-    for fraction in [0, .01, .05, .1, .2, .3, .4, .5]:
-        selected = set(order[:int(fraction*len(first))])
-        assert previous <= selected
-        assert len(selected) == int(fraction*len(first))
-        previous = selected
-    np.testing.assert_array_equal(order, nested_switch_order(posterior, 42)[2])
-    assert not np.array_equal(order, nested_switch_order(posterior, 73)[2])
-    with pytest.raises(ValueError):
-        nested_switch_order([[.1, .1]], 42)
+def load_script(name, path):
+    spec = importlib.util.spec_from_file_location(name, Path(path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_nominal_predict_uses_each_fold_global_model_on_its_test_rows():
+    from sklearn.linear_model import LinearRegression
+    from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+
+    runner = load_script("extension_runner", "scripts/run_sensitivity_extensions.py")
+    rng = np.random.default_rng(0)
+    flux = rng.uniform(50, 100, (12, 3))
+    reference = flux.sum(axis=1)
+    folds = []
+    for test in (np.arange(0, 6), np.arange(6, 12)):
+        train = np.setdiff1d(np.arange(12), test)
+        scaler = StandardScaler().fit(flux[train])
+        poly = PolynomialFeatures(1)
+        regression = LinearRegression().fit(poly.fit_transform(scaler.transform(flux[train])), reference[train])
+        folds.append({"fold": len(folds), "test": test, "scaler": scaler, "poly": poly, "regression": regression})
+    np.testing.assert_allclose(runner.nominal_predict(flux, folds), reference, rtol=1e-10)
+    with pytest.raises(RuntimeError, match="every Sunny record"):
+        runner.nominal_predict(flux, folds[:1])
+    weights = np.full(4, .25)
+    assert runner.weighted(np.array([1., -1, 1, -1]), weights) == {"bias": 0., "rmse": 1.}
 
 
 def test_extension_plot_smoke(tmp_path):
-    spec = importlib.util.spec_from_file_location(
-        "extension_plot", Path("plotting/plot_sensitivity_extensions.py")
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = load_script("extension_plot", "plotting/plot_sensitivity_extensions.py")
     geometry = {
         "settings": {"geometry_sets": {"wide_2": [0, 70], "wide_3": [0, 35, 70]}},
         "spectral_only_truth_error_w_m2": {"rmse": 1},
@@ -96,14 +105,5 @@ def test_extension_plot_smoke(tmp_path):
         } for name in ("wide_2", "wide_3") for form in ("regularized", "quadratic")
            for seed in (None, 42)],
     }
-    assignment = {
-        "settings": {"assignment_seeds": [42, 73, 109]},
-        "rows": [{
-            "seed": seed, "fraction": fraction,
-            "w_m2": {"estimate": {"rmse": fraction, "bias": 0},
-                     "intervals": {"rmse": [fraction, fraction], "bias": [0, 0]}},
-        } for seed in (42, 73, 109) for fraction in (0, .01, .05, .1, .2, .3, .4, .5)],
-    }
-    module.plot_reports(geometry, assignment, tmp_path)
+    module.plot_reports(geometry, tmp_path)
     assert (tmp_path/"eco_geometry.png").stat().st_size > 1000
-    assert (tmp_path/"assignment_curve.png").stat().st_size > 1000

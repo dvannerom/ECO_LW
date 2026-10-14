@@ -1,227 +1,135 @@
-SENS_RUNNER = "scripts/run_uncertainty_sensitivity.py"
+# Production-aligned sensitivity study (config/sensitivity_run.yaml, schema 2).
+# Every variant perturbs one choice of the configuration `all` produces; the
+# recomputed baselines must close on the production daily products (ABI) and
+# on the nominal residuals (Sunny/ECO). Defined after nominal_budget.smk names.
+import shlex
+
+SENS_RUNNER = "scripts/run_product_sensitivity.py"
 SENS_CODE = [
-    SENS_RUNNER, "src/sensitivity.py", "src/scene_features.py", "src/adm.py",
-    "src/adm_fitting.py", "src/broadband.py", "src/radiometry.py",
-    "src/eco_spectral_response.py", "src/uncertainty.py",
-]
-SENS_COMMON = [
-    SENS_SETTINGS, "config.yaml", "config/error_budget.yaml",
-    "config/uncertainty_experiments.yaml", ECO_CHANNEL_SCENARIOS_FILE, *SENS_CODE,
+    SENS_RUNNER, "src/product_sensitivity.py", *PRODUCTION_CODE,
+    "src/nominal_budget.py", "src/nominal_streaming.py", "src/scene_features.py",
+    "src/geometry_sensitivity.py", "src/uncertainty.py", "scripts/run_nominal_budget.py",
+    SENS_SETTINGS, NOMINAL_SETTINGS_PATH, "config.yaml", ECO_CHANNEL_SCENARIOS_FILE,
 ]
 SENS_COMMAND = (
     "OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 "
-    f"python {SENS_RUNNER} --settings {SENS_SETTINGS} "
+    f"python {SENS_RUNNER} --settings {shlex.quote(str(SENS_SETTINGS))} "
+    f"--nominal-settings {shlex.quote(str(NOMINAL_SETTINGS_PATH))} "
+    f"--taxonomy {shlex.quote(str(SCENE_TAXONOMY_FILE))} "
+    f"--coefficients {shlex.quote(str(NARROWBAND_TO_BROADBAND_COEFFS_FILE))} "
+    f"--max-vza {PRODUCTION_MAX_VZA_DEG} "
 )
-SENS_TRAINING = [f"{SENS_DIR}/abi/cache/{day}.npz" for day in SENS["training_days"]]
-SENS_EVALUATION = [f"{SENS_DIR}/abi/cache/{day}.npz" for day in SENS["evaluation_days"]]
-SENS_BASE_COMPONENTS = SENS["abi"]["baseline_components"]
-SENS_ABI_VARIANTS = ["baseline", "spatial", "assignment", "adm"] + [
-    f"components_{count}" for count in SENS["abi"]["components"] if count != SENS_BASE_COMPONENTS
-]
-SENS_SUNNY_VARIANTS = ["baseline", "spectral", "adm", "robust", "noise", "joint"]
+SENS_DAYS = sorted(NOMINAL["training_days"] + NOMINAL["validation_days"])
+if SENS_DAYS != sorted(DAYS):
+    raise ValueError("config.yaml days must equal the nominal training plus validation days")
+SENS_COMPONENT_SHIFTS = {"components_minus_1": -1, "components_plus_1": 1}
 
 
-def sensitivity_realizations(variant):
-    return range(SENS["realizations"]) if variant in ("noise", "assignment", "joint") else [0]
+def sensitivity_shifted_components():
+    """K-1/K+1 counts needed by any configured variant and present in the candidate range."""
+    names = set(SENS["abi_variants"]) | set(SENS["sunny_variants"])
+    return sorted(SCENE_COMPONENTS + shift for name, shift in SENS_COMPONENT_SHIFTS.items()
+                  if name in names and SCENE_COMPONENTS + shift in NOMINAL["components"])
 
 
-SENS_COMPARISONS = [
-    f"{SENS_DIR}/comparisons/{branch}_{variant}_{realization}.json"
-    for branch, variants in (("abi", SENS_ABI_VARIANTS), ("sunny", SENS_SUNNY_VARIANTS))
-    for variant in variants if variant != "baseline"
-    for realization in sensitivity_realizations(variant)
-]
+def sensitivity_candidates(wildcards=None):
+    """Fixed-seed K+-1 candidates used by the sensitivity variants."""
+    return [f"{NOM_DIR}/candidate_k{count}_s{NOM_GMM_SEED}.joblib{suffix}"
+            for count in sensitivity_shifted_components()
+            for suffix in ("", ".json")]
 
 
-def sensitivity_components(variant):
-    return int(variant.removeprefix("components_")) if variant.startswith("components_") else SENS_BASE_COMPONENTS
+def sensitivity_abi_libraries(day):
+    libraries = [PRODUCTION_ADM]
+    if "adm_quadratic" in SENS["abi_variants"]:
+        libraries.append(f"{NOM_ADM_DIR}/adm_k{SCENE_COMPONENTS}_quadratic.joblib")
+    if "adm_daily" in SENS["abi_variants"]:
+        libraries.append(f"{NOM_ADM_DIR}/daily/adm_k{SCENE_COMPONENTS}_day{day}.joblib")
+    if set(SENS["abi_variants"]) & set(SENS_COMPONENT_SHIFTS):
+        libraries += [f"{NOM_ADM_DIR}/adm_k{count}.joblib" for count in sensitivity_shifted_components()]
+    return [path + suffix for path in libraries for suffix in ("", ".json")]
 
 
-def sensitivity_form(variant):
-    return "quadratic" if variant in ("adm", "joint") else "regularized"
-
-
-def sensitivity_target_report(wildcards):
-    if not USE_SENSITIVITY:
-        raise ValueError(
-            "Enable the first assessment with --config uncertainty_sensitivity=true "
-            "so budget plotting depends on the new report."
-        )
-    return SENS_REPORT
+SENS_DAY_PARTS = [f"{SENS_DIR}/abi_days/day{day}.json" for day in SENS_DAYS]
+SENS_DAY_MAPS = [f"{SENS_DIR}/abi_days/day{day}_maps.npz" for day in SENS_DAYS]
+SENS_SUNNY = f"{SENS_DIR}/sunny_variants.json"
+SENS_MONTHLY_MAPS = f"{SENS_DIR}/monthly_difference_maps.npz"
 
 
 rule uncertainty_sensitivity_assessment:
     input:
-        report=sensitivity_target_report,
-        figures=UNCERTAINTY_FIGURES,
+        report=SENS_REPORT,
+        variance_decomposition=UNCERTAINTY_FIGURES[0],
         csv="docs/Uncertainty budget and propagation for ECO_LW - Sheet1.csv",
-        diagnostics=f"{SENS['figure_dir']}/broadband_sensitivity.png"
+        diagnostics=f"{SENS['figure_dir']}/broadband_sensitivity.png",
+        maps=f"{SENS['figure_dir']}/monthly_difference_maps.png"
 
 
-rule prepare_sensitivity_abi:
+rule run_sensitivity_abi_day:
     input:
-        data=lambda wc: f"data/preprocessed_files/abi_{wc.day}_res2km_step1.nc",
-        code=SENS_COMMON
-    output:
-        cache=f"{SENS_DIR}/abi/cache/{{day}}.npz",
-        metadata=f"{SENS_DIR}/abi/cache/{{day}}.npz.json"
-    resources:
-        mem_mb=1024
-    shell:
-        SENS_COMMAND + "prepare-abi --day {wildcards.day} "
-        "--inputs {input.data:q} --output {output.cache:q}"
-
-
-rule train_sensitivity_gmm:
-    input:
-        caches=SENS_TRAINING,
-        metadata=[path + ".json" for path in SENS_TRAINING],
-        code=SENS_COMMON
-    output:
-        model=f"{SENS_DIR}/abi/models/gmm_{{components}}.joblib",
-        metadata=f"{SENS_DIR}/abi/models/gmm_{{components}}.joblib.json"
-    resources:
-        mem_mb=2048
-    shell:
-        SENS_COMMAND + "train-gmm --inputs {input.caches:q} "
-        "--components {wildcards.components} --output {output.model:q}"
-
-
-rule fit_sensitivity_abi_adm:
-    input:
-        caches=SENS_TRAINING,
-        metadata=[path + ".json" for path in SENS_TRAINING],
-        model=f"{SENS_DIR}/abi/models/gmm_{{components}}.joblib",
-        model_metadata=f"{SENS_DIR}/abi/models/gmm_{{components}}.joblib.json",
-        code=SENS_COMMON
-    output:
-        library=f"{SENS_DIR}/abi/models/adm_{{components}}_{{form}}.npz",
-        metadata=f"{SENS_DIR}/abi/models/adm_{{components}}_{{form}}.npz.json"
-    resources:
-        mem_mb=2048
-    shell:
-        SENS_COMMAND + "fit-abi-adm --inputs {input.caches:q} "
-        "--model {input.model:q} --components {wildcards.components} "
-        "--form {wildcards.form} --output {output.library:q}"
-
-
-rule run_sensitivity_abi:
-    input:
-        caches=SENS_EVALUATION,
-        metadata=[path + ".json" for path in SENS_EVALUATION],
-        model=lambda wc: f"{SENS_DIR}/abi/models/gmm_{sensitivity_components(wc.variant)}.joblib",
-        model_metadata=lambda wc: f"{SENS_DIR}/abi/models/gmm_{sensitivity_components(wc.variant)}.joblib.json",
-        library=lambda wc: f"{SENS_DIR}/abi/models/adm_{sensitivity_components(wc.variant)}_{sensitivity_form(wc.variant)}.npz",
-        library_metadata=lambda wc: f"{SENS_DIR}/abi/models/adm_{sensitivity_components(wc.variant)}_{sensitivity_form(wc.variant)}.npz.json",
+        data=lambda wc: preprocessed(wc.day),
+        scene=lambda wc: scene_id(wc.day),
+        product=lambda wc: broadband(wc.day),
+        model=MODEL,
+        model_metadata=MODEL + ".json",
+        libraries=lambda wc: sensitivity_abi_libraries(wc.day),
+        candidates=sensitivity_candidates,
+        summary=NOM_CANDIDATE_SUMMARY,
         coefficients=NARROWBAND_TO_BROADBAND_COEFFS_FILE,
-        code=SENS_COMMON
+        code=SENS_CODE
     output:
-        flux=f"{SENS_DIR}/abi/outputs/{{variant}}_{{realization}}.npz",
-        metadata=f"{SENS_DIR}/abi/outputs/{{variant}}_{{realization}}.npz.json"
-    params:
-        form=lambda wc: sensitivity_form(wc.variant)
+        part=f"{SENS_DIR}/abi_days/day{{day}}.json",
+        maps=f"{SENS_DIR}/abi_days/day{{day}}_maps.npz"
     resources:
-        mem_mb=2048
+        mem_mb=6144
     shell:
-        SENS_COMMAND + "run-abi --inputs {input.caches:q} --model {input.model:q} "
-        "--library {input.library:q} --variant {wildcards.variant} "
-        "--form {params.form} --realization {wildcards.realization} --output {output.flux:q}"
-
-
-rule prepare_sensitivity_sunny:
-    input:
-        spectra=sorted(str(path) for path in Path(SUNNY_DIR).glob("radiance_lw_*/sunny_lw_*")),
-        code=SENS_COMMON
-    output:
-        cache=f"{SENS_DIR}/sunny/cache.npz",
-        metadata=f"{SENS_DIR}/sunny/cache.npz.json"
-    resources:
-        mem_mb=1024
-    shell:
-        SENS_COMMAND + "prepare-sunny --output {output.cache:q}"
-
-
-rule fit_sensitivity_sunny:
-    input:
-        cache=f"{SENS_DIR}/sunny/cache.npz",
-        metadata=f"{SENS_DIR}/sunny/cache.npz.json",
-        code=SENS_COMMON
-    output:
-        model=f"{SENS_DIR}/sunny/models/{{variant}}.joblib",
-        metadata=f"{SENS_DIR}/sunny/models/{{variant}}.joblib.json"
-    resources:
-        mem_mb=1024
-    shell:
-        SENS_COMMAND + "fit-sunny --inputs {input.cache:q} --variant {wildcards.variant} "
-        "--output {output.model:q}"
+        SENS_COMMAND + "abi-day --day {wildcards.day} --output {output.part:q} --maps {output.maps:q}"
 
 
 rule run_sensitivity_sunny:
     input:
-        cache=f"{SENS_DIR}/sunny/cache.npz",
-        metadata=f"{SENS_DIR}/sunny/cache.npz.json",
-        model=lambda wc: f"{SENS_DIR}/sunny/models/{'robust' if wc.variant in ('robust', 'joint') else 'baseline'}.joblib",
-        model_metadata=lambda wc: f"{SENS_DIR}/sunny/models/{'robust' if wc.variant in ('robust', 'joint') else 'baseline'}.joblib.json",
-        code=SENS_COMMON
+        data=[f"{NOM_DIR}/sunny.npz", f"{NOM_DIR}/sunny.npz.json"],
+        model=[MODEL, MODEL + ".json"],
+        nominal=[NOMINAL_BUDGET_REPORT, f"{NOM_DIR}/residuals.npz"],
+        candidates=sensitivity_candidates,
+        summary=NOM_CANDIDATE_SUMMARY,
+        code=SENS_CODE
     output:
-        flux=f"{SENS_DIR}/sunny/outputs/{{variant}}_{{realization}}.npz",
-        metadata=f"{SENS_DIR}/sunny/outputs/{{variant}}_{{realization}}.npz.json"
-    params:
-        form=lambda wc: sensitivity_form(wc.variant)
+        SENS_SUNNY
     resources:
-        mem_mb=1024
+        mem_mb=4096
     shell:
-        SENS_COMMAND + "run-sunny --inputs {input.cache:q} --model {input.model:q} "
-        "--variant {wildcards.variant} --form {params.form} "
-        "--realization {wildcards.realization} --output {output.flux:q}"
-
-
-rule compare_sensitivity:
-    wildcard_constraints:
-        branch="abi|sunny",
-        realization=r"\d+"
-    input:
-        variant=f"{SENS_DIR}/{{branch}}/outputs/{{variant}}_{{realization}}.npz",
-        metadata=f"{SENS_DIR}/{{branch}}/outputs/{{variant}}_{{realization}}.npz.json",
-        baseline=f"{SENS_DIR}/{{branch}}/outputs/baseline_0.npz",
-        baseline_metadata=f"{SENS_DIR}/{{branch}}/outputs/baseline_0.npz.json",
-        code=SENS_COMMON
-    output:
-        f"{SENS_DIR}/comparisons/{{branch}}_{{variant}}_{{realization}}.json"
-    shell:
-        SENS_COMMAND + "compare --inputs {input.variant:q} {input.baseline:q} --output {output:q}"
+        SENS_COMMAND + "sunny --output {output:q}"
 
 
 rule assemble_sensitivity_budget:
     input:
-        comparisons=SENS_COMPARISONS,
-        baseline=f"{SENS_DIR}/sunny/outputs/baseline_0.npz",
-        spectral=f"{SENS_DIR}/sunny/outputs/spectral_0.npz",
-        paired_fluxes=[
-            f"{SENS_DIR}/sunny/outputs/{variant}_{realization}.npz"
-            for variant in ("baseline", "spectral", "adm", "robust", "noise", "joint")
-            for realization in sensitivity_realizations(variant)
-        ],
-        paired_metadata=[
-            f"{SENS_DIR}/sunny/outputs/{variant}_{realization}.npz.json"
-            for variant in ("baseline", "spectral", "adm", "robust", "noise", "joint")
-            for realization in sensitivity_realizations(variant)
-        ],
-        code=SENS_COMMON
+        days=SENS_DAY_PARTS,
+        maps=SENS_DAY_MAPS,
+        sunny=SENS_SUNNY,
+        code=SENS_CODE
     output:
-        SENS_REPORT
+        report=SENS_REPORT,
+        maps=SENS_MONTHLY_MAPS
+    resources:
+        mem_mb=2048
     shell:
-        SENS_COMMAND + "assemble --inputs {input.comparisons:q} "
-        "--paired-fluxes {input.paired_fluxes:q} --output {output:q}"
+        SENS_COMMAND + "assemble --days {input.days:q} --maps {input.maps:q} "
+        "--sunny {input.sunny:q} --monthly-maps {output.maps:q} --output {output.report:q}"
 
 
 rule plot_sensitivity_diagnostics:
     input:
         report=SENS_REPORT,
+        maps=SENS_MONTHLY_MAPS,
         plotter="plotting/plot_uncertainty_sensitivity.py",
         uncertainty_module="src/uncertainty.py",
         layout="src/figure_layout.py"
     output:
-        f"{SENS['figure_dir']}/broadband_sensitivity.png"
+        summary=f"{SENS['figure_dir']}/broadband_sensitivity.png",
+        maps=f"{SENS['figure_dir']}/monthly_difference_maps.png"
+    resources:
+        mem_mb=2048
     shell:
-        "python {input.plotter:q} --report {input.report:q} --output {output:q}"
+        "python {input.plotter:q} --report {input.report:q} --maps {input.maps:q} "
+        "--output {output.summary:q} --maps-output {output.maps:q}"

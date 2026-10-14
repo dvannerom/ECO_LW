@@ -1,7 +1,5 @@
 """Bounded sensitivity operators; radiances and fluxes retain physical units."""
 
-from pathlib import Path
-
 import numpy as np
 from scipy.integrate import simpson
 from scipy.optimize import LinearConstraint, minimize, minimize_scalar
@@ -15,42 +13,6 @@ from adm_fitting import fit_adm_scene
 from broadband import cubic_regression
 from radiometry import radiance_to_brightness_temperature
 from scene_features import _local_valid_stats, spectral_features_from_bt
-
-
-def read_settings(path):
-    import yaml
-
-    with Path(path).open() as source:
-        settings = yaml.safe_load(source)
-    if settings["schema_version"] != 1:
-        raise ValueError("Unsupported sensitivity configuration")
-    abi = settings["abi"]
-    if set(settings["training_days"]) & set(settings["evaluation_days"]):
-        raise ValueError("Training and evaluation days must be disjoint")
-    if not settings["training_days"] or not settings["evaluation_days"]:
-        raise ValueError("Training and evaluation days must be nonempty")
-    for value in (
-        settings["realizations"], abi["tiles_per_day"], abi["tile_size"],
-        abi["training_points"], abi["block_size"], abi["gmm_initializations"],
-        abi["max_candidate_tiles"],
-    ):
-        if not isinstance(value, int) or value < 1:
-            raise ValueError("Counts and dimensions must be positive integers")
-    if abi["halo"] < 4 * abi["block_size"]:
-        raise ValueError("Halo must support the coarse 9x9 texture window")
-    if abi["tile_size"] % abi["block_size"] or abi["halo"] % abi["block_size"]:
-        raise ValueError("Tile and halo must be divisible by block size")
-    if not 0 <= abi["second_choice_fraction"] <= 1:
-        raise ValueError("Assignment fraction must be in [0,1]")
-    if not 0 < abi["minimum_valid_fraction"] <= 1:
-        raise ValueError("Minimum valid fraction must be in (0,1]")
-    if abi["baseline_components"] not in abi["components"] or min(abi["components"]) < 2:
-        raise ValueError("Include a baseline and at least two GMM components")
-    if len(set(abi["components"])) != len(abi["components"]):
-        raise ValueError("Component counts must be unique")
-    if settings["sunny"]["noise_requirement"] not in ("goal", "threshold"):
-        raise ValueError("Select goal or threshold noise requirements")
-    return settings
 
 
 def block_mean(values, block_size):

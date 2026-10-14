@@ -8,7 +8,6 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pytest
-from netCDF4 import Dataset
 
 import run_nominal_budget as runner
 from nominal_budget import integrate_domain
@@ -107,13 +106,7 @@ def test_grouped_budget_closure_and_models(tmp_path, monkeypatch):
     assert (output/"numerical_budget.csv").exists()
 
 
-def test_manual_component_count_and_transition_distribution():
-    eligible = [{"components": 6, "seed": 42, "heldout_mean_log_likelihood": -3},
-                {"components": 6, "seed": 73, "heldout_mean_log_likelihood": -2},
-                {"components": 12, "seed": 42, "heldout_mean_log_likelihood": 5}]
-    assert runner.select_nominal_candidate(eligible, 6)["seed"] == 73
-    with pytest.raises(ValueError, match="no adequately occupied"):
-        runner.select_nominal_candidate(eligible, 7)
+def test_scene_transition_distribution():
     labels = np.repeat([0, 1], 5000)
     probabilities = [[.9, .1], [.2, .8]]
     samples = runner.draw_scene_transitions(labels, probabilities, 30, 42)
@@ -157,11 +150,6 @@ def test_spatial_operator_identity_and_complete_footprints():
     with pytest.raises(ValueError, match="complete aligned"):
         runner.spatial_tile(ThresholdGMM(), raw, raw, angles, planck,
                             library, coefficients, valid, 3)
-    records = {"features": np.ones((3, 10)), "radiance": np.ones((3, 2, 6)),
-               "angles": np.ones((3, 2))}
-    obs = runner.diagnostic_observations(records, planck)
-    np.testing.assert_array_equal(obs[2][:, list(runner.SPECTRAL_CHANNEL_INDICES)], 1)
-    assert np.isnan(obs[2][:, 1]).all()
 
 
 def test_spatial_tile_crops_edges_and_aligns_to_full_grid():
@@ -190,47 +178,13 @@ def test_spatial_tile_crops_edges_and_aligns_to_full_grid():
     np.testing.assert_allclose(result, expected[1:])
 
 
-@pytest.mark.parametrize("dim_pixel", [False, True])
-def test_noise_assignment_uses_heldout_abi_radiance(tmp_path, monkeypatch, dim_pixel):
+def test_abi_noise_features_match_noise_free_brightness_temperature():
     planck = np.broadcast_to([200000., 1300., 0., 1.], (2, 6, 4)).copy()
     bt = np.where(np.indices((5, 5))[0] < 2, 249.9, 250.1)
-    if dim_pixel:
-        bt[0, 0] = 100.
-    radiance = np.repeat((200000./np.expm1(1300./bt))[..., None], 9, axis=2)
-    source_path = tmp_path/"abi.nc"
-    with Dataset(source_path, "w") as source:
-        for name, length in (("y", 5), ("x", 5), ("channel", 9)):
-            source.createDimension(name, length)
-        for satellite in ("G16", "G18"):
-            source.createVariable(f"rad_{satellite}_interp", "f8", ("y", "x", "channel"))[:] = radiance
-    selected = np.stack([radiance[..., list(runner.SPECTRAL_CHANNEL_INDICES)]]*2, axis=2)
+    radiance = np.repeat((200000./np.expm1(1300./bt))[..., None], 6, axis=2)
+    selected = np.stack([radiance]*2, axis=2)
     features = runner.abi_noise_features(selected.reshape(-1, 2, 6), planck, 0)
     np.testing.assert_allclose(features[:, 0], bt.ravel())
-    cache = {
-        "planck": planck, "valid_blocks": np.ones((1, 1, 1), dtype=bool),
-        "origins": [[0, 0]], "features": features.reshape(1, 5, 5, 10),
-    }
-    index = {"day": 246, "provenance": {"inputs": {"0": {"path": str(source_path)}}}}
-    monkeypatch.setattr(runner, "open_cache", lambda path: (index, cache))
-    monkeypatch.setattr(runner, "verify", lambda path: None)
-    monkeypatch.setattr(runner, "provenance", lambda inputs: {})
-    joblib.dump({"model": ThresholdGMM(), "population": np.array([.5, .5])},
-                tmp_path/"spectral_gmm.joblib")
-    settings = {"output_dir": str(tmp_path), "cache_root": str(tmp_path),
-                "validation_days": [246], "sample_points": 25, "tiles_per_day": 1,
-                "noise_seed": 42, "noise_realizations": 30, "nedt_k_at_255": 0}
-    runner.assignment(settings)
-    baseline = json.loads((tmp_path/"abi_assignment.json").read_text())
-    np.testing.assert_array_equal(baseline["transition_probabilities"], np.eye(2))
-    settings["nedt_k_at_255"] = .4
-    runner.assignment(settings)
-    report = json.loads((tmp_path/"abi_assignment.json").read_text())
-    assert report["noise_model"] == "mean_preserving_lognormal"
-    assert report["sample_pixels"] == 25
-    assert 0 < report["weighted_change_probability"] < 1
-    assert np.asarray(report["transition_counts"]).sum() == 25*30
-    runner.assignment(settings)
-    assert json.loads((tmp_path/"abi_assignment.json").read_text()) == report
 
 
 def test_linear_spectral_domain_integration():

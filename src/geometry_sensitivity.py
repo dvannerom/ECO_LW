@@ -78,14 +78,3 @@ def retrieve_geometry(radiance, angles, form):
         "radiance_fit_rmse": float(np.sqrt(np.mean(residual**2))),
         "degrees_of_freedom": len(angles) - design.shape[1],
     }
-
-
-def nested_switch_order(probabilities, seed):
-    """Stable top-two labels and one permutation for nested fraction prefixes."""
-    probabilities = np.asarray(probabilities)
-    if (probabilities.ndim != 2 or probabilities.shape[1] < 2
-            or np.any(~np.isfinite(probabilities)) or np.any(probabilities < 0)
-            or not np.allclose(probabilities.sum(axis=1), 1)):
-        raise ValueError("Invalid GMM posteriors")
-    order = np.argsort(-probabilities, axis=1, kind="stable")
-    return order[:, 0], order[:, 1], np.random.default_rng(seed).permutation(len(order))
