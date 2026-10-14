@@ -1,10 +1,10 @@
 """Degrade a preprocessed ABI product to a coarser resolution by block-averaging.
 
-Reads a `data/preprocessed_files/abi_{day}_res{res}km_step{step}.nc` product
+Reads a `data/preprocessing/abi/abi_{day}_res{res}km_step{step}.nc` product
 (as produced by preprocess_data_ABI.py) and writes a new preprocessed product
-at res * block_size km, so it can be dropped straight back into the rest of
-the workflow (train_GMM.py, scene_id_pca.py, fit_ADM.py, ...) simply by
-setting `resolution_km` to the new value in config.yaml.
+at res * block_size km for optional coarse-resolution diagnostics. The current
+integrated full-population workflow deliberately requires native 2 km, step-1
+inputs; changing `resolution_km` does not enable a coarse nominal assessment.
 
 Each spatial variable is read block_size rows at a time so the full-resolution
 array (up to ~3.8 GB per variable) is never held in memory at once; only the
@@ -32,28 +32,12 @@ import pyproj
 from netCDF4 import Dataset
 
 from geospatial import normalize_longitude
-from preprocess_data_ABI import PreprocessedWriter
+from spatial_averaging import block_average_chunk
+from netcdf_io import PreprocessedWriter
 from radiometry import radiance_to_brightness_temperature
 
 FILENAME_PATTERN = re.compile(r"abi_(\d+)_res(\d+)km_step(\d+)")
 PROJECTION_ATTRS = ("lambda_center", "xmin", "ymin", "res_m", "authalic_radius")
-
-
-def block_average_chunk(chunk, block_size):
-	"""Average a (rows, cols[, channel]) chunk into (1, out_cols[, channel])."""
-	chunk = np.asarray(chunk)
-	rows, cols = chunk.shape[:2]
-	pad_rows = math.ceil(rows / block_size) * block_size
-	pad_cols = math.ceil(cols / block_size) * block_size
-	if pad_rows != rows or pad_cols != cols:
-		padded = np.full((pad_rows, pad_cols) + chunk.shape[2:], np.nan, dtype=chunk.dtype)
-		padded[:rows, :cols] = chunk
-		chunk = padded
-	reshaped = chunk.reshape(
-		pad_rows // block_size, block_size, pad_cols // block_size, block_size, *chunk.shape[2:]
-	)
-	reshaped = reshaped.swapaxes(1, 2)
-	return np.nanmean(reshaped, axis=(2, 3))
 
 
 def block_average_variable(source_variable, block_size):
@@ -104,7 +88,7 @@ if __name__ == "__main__":
 		out_height = math.ceil(source.dimensions["y"].size / args.block_size)
 		out_width = math.ceil(source.dimensions["x"].size / args.block_size)
 
-		output_path = f"data/preprocessed_files/abi_{day}_res{new_res_km}km_step{step}.nc"
+		output_path = f"data/preprocessing/abi/abi_{day}_res{new_res_km}km_step{step}.nc"
 		writer = PreprocessedWriter(output_path, out_height, out_width)
 		try:
 			writer.write_scalar("width", out_width)

@@ -13,7 +13,7 @@ from netCDF4 import Dataset
 from sklearn.metrics import adjusted_rand_score
 
 import nominal_streaming as streaming
-import run_nominal_budget as runner
+import nominal_processing as runner
 from sensitivity import angular_basis, angular_integral
 
 
@@ -59,7 +59,7 @@ def full_case(tmp_path, monkeypatch):
     days = [245, 246, 247]
     for day in days:
         write_abi(tmp_path/f"{day}.nc")
-    monkeypatch.setattr(streaming, "source_path", lambda day: tmp_path/f"{day}.nc")
+    monkeypatch.setattr(streaming, "source_path", lambda day, settings=None: tmp_path/f"{day}.nc")
     monkeypatch.setattr(streaming, "check_provenance", lambda *args: {"status": "current"})
     monkeypatch.setattr(streaming, "check_nominal_stage_provenance",
                         lambda *args, **kwargs: {"status": "current"})
@@ -72,6 +72,8 @@ def full_case(tmp_path, monkeypatch):
         "diagnostic_dir": str(tmp_path/"diagnostics"), "chunk_rows": 3,
         "batch_points": 57, "maximum_vza_deg": 70,
         "noise_realizations": 3, "noise_seed": 42, "nedt_k_at_255": .4,
+        "scenario": "rfma_goal_6",
+        "reference_domain_um": [4, 100],
         "components": [2], "nominal_components": 2, "gmm_seed": 42,
         "gmm_initializations": 1, "gmm_max_iter": 300, "gmm_tol": .001,
         "product_resolution_km": 10,
@@ -629,6 +631,8 @@ def test_streamed_training_through_budget_and_plots(full_case, monkeypatch, tmp_
     monkeypatch.setattr(plotter, "check_provenance", lambda *args: {"status": "current"})
     monkeypatch.setattr("sys.argv", ["plot_nominal_budget.py", "--report", str(output/"budget_report.json")])
     plotter.main()
+    from budget_reporting import write_nominal_budget_csv
+    write_nominal_budget_csv(report, output/"numerical_budget.csv")
     with (output/"numerical_budget.csv").open(newline="") as handle:
         table = list(csv.reader(handle))
     assert len(table) == 11

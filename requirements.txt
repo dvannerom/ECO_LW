@@ -1,0 +1,16 @@
+# Direct workflow dependencies; not a reproducibility lockfile.
+numpy
+scipy
+scikit-learn
+PyYAML
+netCDF4
+xarray
+h5py
+pyresample
+pyproj
+matplotlib
+cartopy
+joblib
+psutil
+threadpoolctl
+snakemake

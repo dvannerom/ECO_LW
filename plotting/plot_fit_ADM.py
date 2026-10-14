@@ -85,6 +85,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    data_file = f'data/preprocessed_files/abi_{args.day}_res{args.resolution}km_step1.nc'
+    data_file = f'data/preprocessing/abi/abi_{args.day}_res{args.resolution}km_step1.nc'
     scene_file = scene_id_path(args.day, args.resolution, args.n_components)
     plot_fit_adm(data_file, scene_file, args.channel, args.scene, args.output_dir)

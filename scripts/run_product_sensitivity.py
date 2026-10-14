@@ -37,7 +37,7 @@ import yaml
 from netCDF4 import Dataset
 from sklearn.model_selection import GroupKFold
 
-import run_nominal_budget as nominal
+import nominal_processing as nominal
 from abi_product import (
     SATELLITES, grid_shape, load_adm_library, planck_coefficients, read_satellite, row_slabs,
     scene_labels,
@@ -45,7 +45,8 @@ from abi_product import (
 from broadband import load_regression_coefficients
 from geometry_sensitivity import retrieve_geometry
 from nominal_budget import error_classes, fit_pooled_shape, library_flux, population_weights
-from product_paths import scene_id_path
+from product_paths import scene_id_path, preprocessed_path, broadband_path
+from workflow_config import settings_paths
 from product_sensitivity import (
     GroupMoments, cell_sums, fit_n2bc_huber, n2b_flux, production_flux, slab_spectral_features,
     vza_bins,
@@ -60,7 +61,8 @@ SUNNY_VARIANTS = ("n2bc_stratified", "n2bc_robust", "n2bc_degree3", "adm_per_fil
 CODE = [Path(__file__), ROOT / "src/product_sensitivity.py", ROOT / "src/abi_product.py",
         ROOT / "src/broadband.py", ROOT / "src/sensitivity.py", ROOT / "src/nominal_budget.py",
         ROOT / "src/nominal_streaming.py", ROOT / "src/scene_features.py",
-        ROOT / "src/geometry_sensitivity.py", ROOT / "scripts/run_nominal_budget.py"]
+        ROOT / "src/geometry_sensitivity.py", ROOT / "src/nominal_processing.py",
+        ROOT / "src/product_paths.py", ROOT / "src/workflow_config.py"]
 
 # What each variant changes, and what it can and cannot say about ECO.
 DESCRIPTIONS = {
@@ -84,7 +86,7 @@ DESCRIPTIONS = {
 ECO_TRANSFER = {
     "abi": ("ABI two-view geometric/spectral proxy: transfers to ECO only through the matching "
             "Sunny/ECO variant (same model choice with ECO channels and geometry)."),
-    "sunny": "ECO goal channels on Sunny simulations: conditional ECO evidence, no ECO product exists.",
+    "sunny": "ECO goal channels on Sunny simulations: conditional evidence, not an observed ECO product.",
 }
 
 
@@ -112,7 +114,7 @@ def available(variants, components, settings):
 def provenance(sens_path, inputs):
     return build_provenance(
         root=ROOT, code_paths=CODE,
-        configuration_paths=[Path(sens_path), nominal.SETTINGS, nominal.CONFIG_PATH, nominal.TAXONOMY_PATH,
+        configuration_paths=[Path(sens_path), *settings_paths(nominal.SETTINGS), nominal.CONFIG_PATH, nominal.TAXONOMY_PATH,
                              ROOT / "config/eco_channel_scenarios.yaml"],
         input_paths={str(index): Path(path) for index, path in enumerate(inputs)},
     )
@@ -183,9 +185,13 @@ def abi_day(args, sens, settings, config):
     models = abi_variant_models(settings, components, variants, day)
     edges = sens["vza_bin_edges_deg"]
     n_bins = len(edges)  # last index collects out-of-range angles (none for paired pixels)
-    radiance_file = f"data/preprocessed_files/abi_{day}_res{resolution}km_step1.nc"
-    scene_file = scene_id_path(day, resolution, components)
-    product_file = f"data/broadband_flux/broadband_flux_{day}_res{resolution}km.nc"
+    roots = config.get("paths", {})
+    radiance_file = preprocessed_path(day, resolution, config.get("preprocess_step", 1),
+                                     roots.get("preprocessed", "data/preprocessing/abi"))
+    scene_file = scene_id_path(day, resolution, components,
+                               roots.get("scene_id", "data/abi_proxy/products/scene_id"))
+    product_file = broadband_path(day, resolution,
+                                  roots.get("broadband", "data/abi_proxy/products/broadband_flux"))
     stats = {name: {sat: {"global": GroupMoments(1), "scene": GroupMoments(components),
                           "vza": GroupMoments(n_bins), "baseline": GroupMoments(1),
                           "baseline_scene": GroupMoments(components), "cell": GroupMoments(1),
@@ -529,7 +535,7 @@ def main():
     parser.add_argument("--nominal-settings", type=Path, default=nominal.SETTINGS)
     parser.add_argument("--taxonomy", type=Path, default=nominal.TAXONOMY_PATH)
     parser.add_argument("--day", type=int)
-    parser.add_argument("--coefficients", default="data/models/narrowband_to_broadband_coeffs.json")
+    parser.add_argument("--coefficients", default="data/abi_proxy/models/n2b/narrowband_to_broadband_coeffs.json")
     parser.add_argument("--n2b-form", default="cubic", choices=("linear", "quadratic", "cubic"))
     parser.add_argument("--max-vza", type=float, default=70.)
     parser.add_argument("--output", required=True)

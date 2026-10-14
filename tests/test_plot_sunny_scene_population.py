@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from plotting.plot_sunny_scene_population import plot_population, summarize_files
+from scene_population import write_population_summary
 
 
 def write_rows(path, files):
@@ -75,7 +76,10 @@ class SunnyPopulationTests(unittest.TestCase):
             summary.write_text(json.dumps({
                 "settings": {"n_components": 3}, "sunny_spectrum_count": 2,
             }))
-            report = plot_population(path, summary, root / "figures")
+            csv_path = root / "diagnostics/sunny_file_scene_consistency.csv"
+            report_path = root / "diagnostics/sunny_scene_population.json"
+            report = write_population_summary(path, summary, csv_path, report_path)
+            plot_population(csv_path, report_path, root / "figures")
             self.assertEqual(report["scene_file_counts"], [1, 1, 0])
             self.assertEqual(sum(report["scene_file_counts"]), 2)
             self.assertEqual(report["scene_view_counts"], [18, 18, 0])
@@ -84,16 +88,17 @@ class SunnyPopulationTests(unittest.TestCase):
             for name in (
                 "sunny_scene_population.png", "sunny_scene_population_all_views.png",
                 "sunny_scene_consistency.png",
-                "sunny_file_scene_consistency.csv", "sunny_scene_population.json",
             ):
                 self.assertGreater((root / "figures" / name).stat().st_size, 0)
-            with (root / "figures" / "sunny_file_scene_consistency.csv").open() as handle:
+            self.assertFalse(list((root / "figures").glob("*.csv")))
+            self.assertFalse(list((root / "figures").glob("*.json")))
+            with csv_path.open() as handle:
                 self.assertEqual(len(list(csv.DictReader(handle))), 2)
             summary.write_text(json.dumps({
                 "settings": {"n_components": 3}, "sunny_spectrum_count": 3,
             }))
             with self.assertRaisesRegex(ValueError, "count disagrees"):
-                plot_population(path, summary, root / "bad")
+                write_population_summary(path, summary, csv_path, report_path)
 
     def test_mixed_file_contributes_each_scene_occurrence(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -107,7 +112,10 @@ class SunnyPopulationTests(unittest.TestCase):
             summary.write_text(json.dumps({
                 "settings": {"n_components": 3}, "sunny_spectrum_count": 1,
             }))
-            report = plot_population(path, summary, root / "figures")
+            report = write_population_summary(
+                path, summary, root / "diagnostics/consistency.csv",
+                root / "diagnostics/population.json",
+            )
             self.assertEqual(report["scene_file_counts"], [1, 0, 0])
             self.assertEqual(report["scene_view_counts"], [12, 6, 0])
             self.assertEqual(report["n_file_view_assignments"], 18)

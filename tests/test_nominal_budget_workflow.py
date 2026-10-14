@@ -9,7 +9,7 @@ import joblib
 import numpy as np
 import pytest
 
-import run_nominal_budget as runner
+import nominal_processing as runner
 from nominal_budget import integrate_domain
 from sensitivity import angular_basis, angular_integral
 
@@ -34,6 +34,8 @@ def test_grouped_budget_closure_and_models(tmp_path, monkeypatch):
     options = {
         "output_dir": str(tmp_path/"budget"), "diagnostic_dir": str(tmp_path/"diagnostics"),
         "noise_realizations": 4, "noise_seed": 42, "folds": 5,
+        "reference_domain_um": [4, 100],
+        "product_dir": str(tmp_path/"products"), "scenario": "rfma_goal_6",
         "figure_dir": str(tmp_path/"figures"), "diagnostic_figure_dir": str(tmp_path/"diagnostic_figures"),
         "spatial": {"nominal_block_size": 5, "independent_of_other_sources": True},
     }
@@ -62,6 +64,10 @@ def test_grouped_budget_closure_and_models(tmp_path, monkeypatch):
     assert report["support"]["covered_population"] == 1
     assert report["assignment_transfer"]["weighted_change_probability"] == .13
     assert report["assignment_transfer"]["included_in_total"]
+    products = report["products"]["clean_heldout_flux"]
+    assert products["narrowband_flux"]["npz"].startswith("narrowband_flux/")
+    assert products["broadband_flux"]["npz"].startswith("broadband_flux/")
+    assert "simulation/evaluation-only" in report["products"]["scope"]
     with np.load(output/"residuals.npz") as source:
         np.testing.assert_allclose(source["total"],
             source["spectral"]+source["angular"]+source["radiometric"]+source["assignment"], atol=1e-10)
@@ -76,16 +82,58 @@ def test_grouped_budget_closure_and_models(tmp_path, monkeypatch):
             +2*sum(covariance.values()))
     cv = joblib.load(output/"cv_models.joblib")
     seen = []
-    for fold in cv:
-        assert not set(fold["training_groups"]) & set(fold["test_groups"])
-        seen.extend(fold["test"])
+    narrowband_path = Path(options["product_dir"])/products["narrowband_flux"]["npz"]
+    broadband_path = Path(options["product_dir"])/products["broadband_flux"]["npz"]
+    with np.load(narrowband_path) as narrowband:
+        source_case_folds = narrowband["fold_id"]
+        for fold_id, fold in enumerate(cv):
+            assert not set(fold["training_groups"]) & set(fold["test_groups"])
+            seen.extend(fold["test"])
+            assert np.all(source_case_folds[fold["test"]] == fold_id)
+            assert not set(narrowband["groups"][fold["test"]]) & set(fold["training_groups"])
+        assert narrowband["clean_narrowband_flux_w_m2"].shape == (n, 6)
+        np.testing.assert_array_equal(narrowband["case_index"], np.arange(n))
+        np.testing.assert_array_equal(narrowband["scene_label"], labels)
+        np.testing.assert_array_equal(narrowband["groups"], data["groups"])
+        np.testing.assert_array_equal(narrowband["regimes"], data["regimes"])
+        np.testing.assert_array_equal(narrowband["reference_truth_w_m2"], reference)
+        with np.load(output/"residuals.npz") as residual:
+            np.testing.assert_allclose(narrowband["population_weight"], residual["weights"])
+            expected_broadband = (
+                reference+residual["spectral"][:, 0]+residual["angular"][:, 0]
+            )
     np.testing.assert_array_equal(np.sort(seen), np.arange(n))
+    with np.load(broadband_path) as broadband:
+        np.testing.assert_allclose(
+            broadband["predicted_clean_broadband_flux_w_m2"],
+            expected_broadband,
+        )
+        assert np.all(np.isfinite(broadband["predicted_clean_broadband_flux_w_m2"]))
+        assert np.all(broadband["predicted_clean_broadband_flux_w_m2"] > 0)
+    with np.load(narrowband_path) as narrowband:
+        assert np.all(np.isfinite(narrowband["clean_narrowband_flux_w_m2"]))
+        assert np.all(narrowband["clean_narrowband_flux_w_m2"] > 0)
+    for product_link, expected_type, flux_name, units in (
+        (products["narrowband_flux"], "narrowband_flux", "clean_narrowband_flux_w_m2", "W m-2"),
+        (products["broadband_flux"], "broadband_flux", "predicted_clean_broadband_flux_w_m2", "W m-2"),
+    ):
+        metadata = json.loads((Path(options["product_dir"])/product_link["metadata"]).read_text())
+        assert metadata["product_type"] == expected_type
+        assert metadata["scenario"] == options["scenario"]
+        assert metadata["units"][flux_name] == units
+        assert metadata["provenance"] == {"test": True}
+        assert metadata["array_shapes"][flux_name][0] == n
+        assert "simulation/evaluation-only" in metadata["scope"]
+    assert np.all(source_case_folds >= 0)
     nominal = joblib.load(output/"nominal_models.joblib")
     assert nominal["present"].all()
     spec = importlib.util.spec_from_file_location("nominal_plot", Path("plotting/plot_nominal_budget.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.plot(report)
+    assert not (output/"numerical_budget.csv").exists()
+    from budget_reporting import write_nominal_budget_csv
+    write_nominal_budget_csv(report, output/"numerical_budget.csv")
     diagnostic_csv = Path(options["diagnostic_dir"])/"gmm_component_diagnostics.csv"
     diagnostic_csv.parent.mkdir(parents=True, exist_ok=True)
     with diagnostic_csv.open("w", newline="") as handle:

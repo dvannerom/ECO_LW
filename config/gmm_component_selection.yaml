@@ -1,0 +1,31 @@
+extends: processing_common.yaml
+output_dir: data/gmm_component_selection/work
+diagnostic_dir: data/gmm_component_selection/diagnostics
+figure_dir: figures/nominal_production/uncertainties/full_profile
+diagnostic_figure_dir: figures/nominal_production/diagnostics/full_profile
+components:
+- 2
+- 3
+- 4
+- 5
+- 6
+- 7
+- 8
+- 9
+- 10
+- 11
+- 12
+- 13
+- 14
+- 15
+scope: All eligible native ABI two-satellite overlap pixels across 20 held-in and
+  five held-out days, with no geographic or fitting sampling. Full-population scaler/PCA/GMM
+  EM and paired-ratio positive scene ADMs; all held-out pixels enter population and
+  added-noise transitions. Spatial footprints align to the disk grid with no chunk-boundary
+  loss. Native spectral validity and VZA <=70 degrees define eligibility, not historical
+  texture/tile screening. Component reliability uses production-style bootstrap refits
+  on a bounded per-day training sample; it is separate from full-data fitting and
+  is not a full-population robustness estimate. Grouped held-out Sunny columns use
+  ABI taxonomy and ECO goal SRFs for physical retrieval. ABI assignment/spatial transfer
+  to ECO and spatial independence remain explicit hypotheses, not full ECO mission
+  uncertainty.

@@ -10,7 +10,7 @@ from plotting import plot_narrowband_flux
 
 class NarrowbandFluxCLITests(unittest.TestCase):
     def test_input_only_uses_abi_proxy_product_directory(self):
-        input_file = "data/narrowband_flux/narrowband_flux_271_res2km_C0.nc"
+        input_file = "data/abi_proxy/products/narrowband_flux/narrowband_flux_271_res2km_C0.nc"
         with patch.object(plot_narrowband_flux, "plot_narrowband_irradiance") as plot:
             plot_narrowband_flux.main(["--input", input_file])
         plot.assert_called_once_with(

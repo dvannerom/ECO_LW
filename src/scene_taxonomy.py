@@ -15,6 +15,7 @@ import yaml
 
 from scene_features import spectral_feature_names
 from uncertainty import sha256_file
+from workflow_config import load_settings
 
 DEFAULT_TAXONOMY_FILE = Path("config/scene_taxonomy.yaml")
 FEATURE_SET = "spectral_10"
@@ -26,7 +27,7 @@ NEIGHBOUR_COLUMNS = (
 )
 NON_PROFILE_SETTINGS_FIELDS = {
     "output_dir", "diagnostic_dir", "figure_dir", "diagnostic_figure_dir",
-    "components", "scope",
+    "components", "scope", "product_dir",
 }
 
 
@@ -133,10 +134,8 @@ def verify_selection(taxonomy, root=Path("."), active_settings=None,
         diagnostic_settings = (root / diagnostics["settings"]).resolve()
         production_settings = (root / active_settings).resolve()
         if diagnostic_settings != production_settings:
-            with diagnostic_settings.open() as handle:
-                diagnostic_profile = yaml.safe_load(handle)
-            with production_settings.open() as handle:
-                production_profile = yaml.safe_load(handle)
+            diagnostic_profile = load_settings(diagnostic_settings)
+            production_profile = load_settings(production_settings)
             diagnostic_profile = {
                 key: value for key, value in diagnostic_profile.items()
                 if key not in NON_PROFILE_SETTINGS_FIELDS

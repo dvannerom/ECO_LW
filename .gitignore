@@ -16,41 +16,18 @@ __pycache__/
 
 .vscode/
 
-# Snakemake completion markers and generated diagnostics/selection outputs
+# Snakemake completion markers and generated files in historical layouts.
 data/.workflow/
-data/models/selected_n_components*.json
-figures/*.csv
-data/uncertainty/eco_spectral_reconstruction.json
-data/uncertainty/eco_spectral_residuals.csv
-data/uncertainty/eco_n2bc_cv_models.joblib
-data/uncertainty/eco_n2bc_stage_metrics.json
-data/uncertainty/eco_adm_stage_metrics.json
-data/uncertainty/eco_adm_retrieval/
-data/uncertainty/abi_adm_proxy_summary.json
-
-# Generated experiments stay local; retain selected small nominal evidence.
+data/models/
+data/diagnostics/
+data/uncertainty/
 data/abi_sunny_comparison*/
+data/uncertainty_experiments/
 data/uncertainty_runs/
-data/uncertainty/*
-!data/uncertainty/nominal/
-data/uncertainty/nominal/*
-!data/uncertainty/nominal/budget_report.json
-!data/uncertainty/nominal/numerical_budget.csv
-!data/uncertainty/nominal/spatial_report.json
-!data/uncertainty/nominal/abi_assignment.json
-data/diagnostics/*
-!data/diagnostics/nominal/
-data/diagnostics/nominal/*
-!data/diagnostics/nominal/gmm_selection.json
-!data/diagnostics/nominal/scene_support.json
-!data/diagnostics/nominal/gmm_component_diagnostics.csv
-!data/diagnostics/nominal/gmm_component_diagnostics.csv.json
-figures/diagnostics/**/*.json
-figures/diagnostics/**/*.csv
-!figures/diagnostics/gmm/production/gmm_component_diagnostics.csv
-figures/nominal_production/diagnostics/**/*.json
-figures/nominal_production/diagnostics/**/*.csv
-!figures/nominal_production/diagnostics/gmm/production/gmm_component_diagnostics.csv
+figures/**/*.json
+figures/**/*.csv
+legacy/figures/**/*.json
+legacy/figures/**/*.csv
 
 # SBDART "Sunny" scene library (large, externally generated, not versioned)
 data/Sunny/
@@ -59,3 +36,29 @@ data/Sunny/
 # extracted text: large, externally sourced, not versioned
 docs/*.pdf
 docs/*.pdf.txt
+
+# Workflow-oriented generated artifacts. Source channel responses remain tracked.
+data/preprocessing/
+data/scene_classification/
+data/gmm_component_selection/
+data/nominal_production/
+data/abi_proxy/products/
+data/abi_proxy/diagnostics/
+data/abi_proxy/models/adm/
+data/inputs/sunny/
+
+# Retain only the previously versioned historical evidence, not archived caches.
+legacy/data/*
+!legacy/data/diagnostics/
+legacy/data/diagnostics/*
+!legacy/data/diagnostics/nominal/
+!legacy/data/models/
+legacy/data/models/selected_n_components*.json
+!legacy/data/uncertainty/
+legacy/data/uncertainty/*
+!legacy/data/uncertainty/nominal/
+legacy/data/uncertainty/nominal/*
+!legacy/data/uncertainty/nominal/abi_assignment.json
+!legacy/data/uncertainty/nominal/budget_report.json
+!legacy/data/uncertainty/nominal/numerical_budget.csv
+!legacy/data/uncertainty/nominal/spatial_report.json

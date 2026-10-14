@@ -30,6 +30,11 @@ days:
 resolution_km: 2
 preprocess_step: 1
 lambda_center: -106
+raw_abi:
+  year: 2024
+  primary_root: /ksb-orb/science/goes/ABI/202409
+  extra_channels_root: /ksb-orb/science/goes/ABI/202409_missing_channels
+  cloud_height_root: /ksb-orb/science/goes/ABI/cloud-top-height/202409
 # Shared spectral-only scene taxonomy; K is a reviewed manual choice recorded
 # there (see README "Scene taxonomy: choosing K").
 scene_taxonomy_file: config/scene_taxonomy.yaml
@@ -38,14 +43,14 @@ scene_id_diagnostic_day: 271
 
 # GERB/Clerbaux Sunny spectra support the ECO channel-scenario assessment and
 # the separate GOES ABI coefficient fit used only by the proxy production chain.
-sunny_dir: data/Sunny
-goes_filter_dir: data/goes_channels
+sunny_dir: data/inputs/sunny
+goes_filter_dir: data/inputs/goes_channels
 eco_channel_scenarios_file: config/eco_channel_scenarios.yaml
 eco_spectral_cv_folds: 5
 # Separate ABI-trained spectral classifier for direct per-view Sunny comparison.
-# This component count is independent of the production texture-GMM selection.
+# Exploratory only: this sampled classifier is not the reviewed production GMM.
 abi_sunny_comparison:
-  output_dir: data/abi_sunny_comparison
+  output_dir: data/nominal_production/diagnostics/abi_sunny/comparison
   figure_dir: figures/nominal_production/diagnostics/abi_sunny/comparison
   components: 7
   points_per_file: 50000
@@ -54,45 +59,28 @@ abi_sunny_comparison:
   seed: 42
   gmm_jobs: 1
   max_roundtrip_error_K: 0.1
-channel_power_law_file: data/models/channel_radiance_power_law.json
-narrowband_to_broadband_coeffs_file: data/models/narrowband_to_broadband_coeffs.json
+channel_power_law_file: data/abi_proxy/models/n2b/channel_radiance_power_law.json
+narrowband_to_broadband_coeffs_file: data/abi_proxy/models/n2b/narrowband_to_broadband_coeffs.json
 
-# ABI files sampled by the ABI/Sunny spectral comparison (the production scene
-# model is the shared full-population GMM in config/scene_taxonomy.yaml).
-training_files:
-  - data/preprocessed_files/abi_245_res2km_step1.nc
-  - data/preprocessed_files/abi_247_res2km_step1.nc
-  - data/preprocessed_files/abi_249_res2km_step1.nc
-  - data/preprocessed_files/abi_250_res2km_step1.nc
-  - data/preprocessed_files/abi_251_res2km_step1.nc
-  - data/preprocessed_files/abi_254_res2km_step1.nc
-  - data/preprocessed_files/abi_255_res2km_step1.nc
-  - data/preprocessed_files/abi_256_res2km_step1.nc
-  - data/preprocessed_files/abi_257_res2km_step1.nc
-  - data/preprocessed_files/abi_258_res2km_step1.nc
-  - data/preprocessed_files/abi_261_res2km_step1.nc
-  - data/preprocessed_files/abi_262_res2km_step1.nc
-  - data/preprocessed_files/abi_263_res2km_step1.nc
-  - data/preprocessed_files/abi_264_res2km_step1.nc
-  - data/preprocessed_files/abi_266_res2km_step1.nc
-  - data/preprocessed_files/abi_268_res2km_step1.nc
-  - data/preprocessed_files/abi_269_res2km_step1.nc
-  - data/preprocessed_files/abi_270_res2km_step1.nc
-  - data/preprocessed_files/abi_273_res2km_step1.nc
-  - data/preprocessed_files/abi_274_res2km_step1.nc
+# The exploratory comparison uses the common training-day split unless an
+# explicit training_files list is supplied.
+paths:
+  preprocessed: data/preprocessing/abi
+  scene_id: data/abi_proxy/products/scene_id
+  narrowband: data/abi_proxy/products/narrowband_flux
+  broadband: data/abi_proxy/products/broadband_flux
 
 output:
-  root: data
-  monthly: data/monthly/monthly_flux_res2km.nc
-  eco_spectral_metrics: data/uncertainty/eco_spectral_reconstruction.json
-  eco_spectral_residuals: data/uncertainty/eco_spectral_residuals.csv
-  eco_n2bc_models: data/uncertainty/eco_n2bc_cv_models.joblib
-  eco_n2bc_metrics: data/uncertainty/eco_n2bc_stage_metrics.json
-  eco_adm_dir: data/uncertainty/eco_adm_retrieval
-  eco_adm_metrics: data/uncertainty/eco_adm_stage_metrics.json
-  abi_adm_proxy_summary: data/uncertainty/abi_adm_proxy_summary.json
-  uncertainty_registry: data/uncertainty/eco_uncertainty_registry.json
-  uncertainty_gap_report: data/uncertainty/eco_uncertainty_gaps.md
+  monthly: data/abi_proxy/products/monthly_flux/monthly_flux_res2km.nc
+  eco_spectral_metrics: data/nominal_production/diagnostics/eco_spectral_reconstruction.json
+  eco_spectral_residuals: data/nominal_production/diagnostics/eco_spectral_residuals.csv
+  eco_n2bc_models: data/nominal_production/models/eco_n2bc_cv_models.joblib
+  eco_n2bc_metrics: data/nominal_production/diagnostics/eco_n2bc_stage_metrics.json
+  eco_adm_dir: data/nominal_production/products/spectral_assessment/narrowband_flux
+  eco_adm_metrics: data/nominal_production/diagnostics/eco_adm_stage_metrics.json
+  abi_adm_proxy_summary: data/abi_proxy/diagnostics/adm_proxy_summary.json
+  uncertainty_registry: data/nominal_production/reports/uncertainty_registry.json
+  uncertainty_gap_report: data/nominal_production/reports/uncertainty_gaps.md
   eco_spectral_figure_dir: figures/nominal_production/uncertainties/eco_spectral_assessment
   eco_spectral_figures:
     - figures/nominal_production/uncertainties/eco_spectral_assessment/eco_spectral_k2_scatter.png

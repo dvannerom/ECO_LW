@@ -1,0 +1,13 @@
+extends: processing_common.yaml
+output_dir: data/nominal_production/uncertainties/nominal_budget
+diagnostic_dir: data/nominal_production/diagnostics
+figure_dir: figures/nominal_production/uncertainties/nominal_budget
+diagnostic_figure_dir: figures/nominal_production/diagnostics
+components: reviewed_and_adjacent
+scope: Production and nominal uncertainty use the reviewed K scene taxonomy. The
+  enabled adjacent candidates are fitted only for the configured one-at-a-time
+  component-count sensitivity. Full-population scaler/PCA/GMM fitting and paired-ratio
+  positive scene ADMs use the same eligible ABI population as the full diagnostic
+  profile. Grouped held-out Sunny columns use ABI taxonomy and ECO goal SRFs for physical
+  retrieval. ABI assignment/spatial transfer to ECO and spatial independence remain
+  explicit hypotheses, not full ECO mission uncertainty.

@@ -16,13 +16,13 @@ for path in (ROOT, SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from scripts.fit_irradiance import band_radiance, power_law
+from channel_emulation import band_radiance, power_law
 from spectral_response import CHANNELS, load_goes_filters
 
 
 def plot_irradiance_fit(
-    model_file=ROOT / "data" / "models" / "channel_radiance_power_law.json",
-    filter_dir=ROOT / "data" / "goes_channels",
+    model_file=ROOT / "data/abi_proxy/models/n2b/channel_radiance_power_law.json",
+    filter_dir=ROOT / "data/inputs/goes_channels",
     output_dir=ROOT / "figures" / "abi_proxy" / "diagnostics" / "n2bc",
     t_min=200.0,
     t_max=320.0,
@@ -71,13 +71,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=Path,
-        default=ROOT / "data" / "models" / "channel_radiance_power_law.json",
+        default=ROOT / "data/abi_proxy/models/n2b/channel_radiance_power_law.json",
         help="Saved channel power-law JSON",
     )
     parser.add_argument(
         "--filter-dir",
         type=Path,
-        default=ROOT / "data" / "goes_channels",
+        default=ROOT / "data/inputs/goes_channels",
         help="Directory holding GOES ABI spectral response files",
     )
     parser.add_argument(

@@ -1,6 +1,6 @@
 """Fit narrowband-to-broadband regression coefficients from the SBDART "Sunny" scene library.
 
-For every simulated clear-sky/cloudy scene in data/Sunny/, the TOA broadband
+For every simulated clear-sky/cloudy scene in data/inputs/sunny/, the TOA broadband
 flux and per-GOES-channel fluxes are integrated from the upward spectral flux,
 converted to an effective narrowband brightness temperature via a
 sensor-emulation power law, and regressed (linear/quadratic/cubic polynomial)
@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from scipy import integrate
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
@@ -24,44 +23,7 @@ if str(SRC) not in sys.path:
 	sys.path.insert(0, str(SRC))
 
 from spectral_response import CHANNELS, load_goes_filters, load_power_law
-
-SIGMA = 5.670374e-08  # Stefan-Boltzmann constant, W/m2/K4
-
-# Fallback power-law sensor-emulation coefficients (radiance[W/m2/um/sr] =
-# (a * BT[K])**b), used only if --power-law-file (scripts/fit_irradiance.py
-# output) is unavailable. Used only to turn simulated SBDART nadir radiances
-# into an effective narrowband BT; the operational pipeline instead converts
-# real ABI radiances to BT with the exact per-file Planck coefficients
-# (src/radiometry.py). The two conversions are independent approximations of
-# the same channel and are not guaranteed to agree bit-for-bit; this is a
-# known modeling simplification.
-DEFAULT_CHANNEL_A = np.array([4.63213883e-03, 5.05040878e-03, 5.27956064e-03, 0.00645188, 0.00693793, 0.00632944])
-DEFAULT_CHANNEL_B = np.array([7.99453640e+00, 6.07740875e+00, 5.41373985e+00, 4.75053341, 4.38290917, 4.10502937])
-
-
-def load_sunny_scene(path, lambdas_goes, response_goes):
-	"""Integrate one SBDART spectrum into broadband and GOES-channel fluxes.
-
-	:param path: (Path) sunny_lw_* file. Columns: wavelength[um], upward TOA
-		flux[W/m2/um], nadir (0 deg VZA) radiance[W/m2/um/sr], ...
-	:param lambdas_goes: (list[ndarray]) per-channel filter wavelengths[um]
-	:param response_goes: (list[ndarray]) per-channel filter responses
-	:return: (float, ndarray[6]) broadband flux[W/m2], SRF-weighted channel fluxes[W/m2]
-	"""
-	data = np.loadtxt(path)
-	wavelength = data[:, 0]
-	flux = data[:, 1]
-	flux_bb = integrate.simpson(flux, wavelength, axis=0)
-
-	response = np.stack(
-		[
-			np.interp(wavelength, lam, resp, left=0, right=0)
-			for lam, resp in zip(lambdas_goes, response_goes)
-		],
-		axis=1,
-	)
-	flux_nb = integrate.simpson(flux[:, None] * response, wavelength, axis=0)
-	return flux_bb, flux_nb
+from channel_emulation import DEFAULT_CHANNEL_A, DEFAULT_CHANNEL_B, SIGMA, load_sunny_scene
 
 
 def fit_regressions(t_narrowband, t_broadband):
@@ -88,15 +50,15 @@ def main():
 	parser = argparse.ArgumentParser(
 		description="Fit narrowband-to-broadband regression coefficients from the SBDART Sunny scene library."
 	)
-	parser.add_argument("--sunny-dir", type=Path, default=ROOT / "data" / "Sunny",
+	parser.add_argument("--sunny-dir", type=Path, default=ROOT / "data/inputs/sunny",
 	                     help="Directory holding radiance_lw_cs/ and radiance_lw_cl/ subfolders")
-	parser.add_argument("--filter-dir", type=Path, default=ROOT / "data" / "goes_channels",
+	parser.add_argument("--filter-dir", type=Path, default=ROOT / "data/inputs/goes_channels",
 	                     help="Directory holding per-channel GOES ABI spectral response files")
 	parser.add_argument("--output", type=Path,
-	                     default=ROOT / "data" / "models" / "narrowband_to_broadband_coeffs.json",
+	                     default=ROOT / "data/abi_proxy/models/n2b/narrowband_to_broadband_coeffs.json",
 	                     help="Output JSON path for fitted coefficients")
 	parser.add_argument("--power-law-file", type=Path,
-	                     default=ROOT / "data" / "models" / "channel_radiance_power_law.json",
+	                     default=ROOT / "data/abi_proxy/models/n2b/channel_radiance_power_law.json",
 	                     help="JSON from scripts/fit_irradiance.py; falls back to built-in defaults if missing")
 	args = parser.parse_args()
 
@@ -141,4 +103,3 @@ def main():
 
 if __name__ == "__main__":
 	main()
-

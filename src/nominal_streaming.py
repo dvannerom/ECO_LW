@@ -26,6 +26,7 @@ from nominal_provenance import (
 from scene_features import SPECTRAL_CHANNEL_INDICES, spectral_features_from_bt
 from sensitivity import angular_basis, angular_integral, abi_broadband
 from uncertainty import check_provenance, sha256_file
+from product_paths import candidate_directory, preprocessing_directory, preprocessed_path
 from gmm_stability import (
     cluster_stability_details,
     fit_candidate as fit_stability_candidate,
@@ -34,6 +35,8 @@ from gmm_stability import (
 
 
 def validate_settings(settings, config):
+    if config.get("resolution_km", 2) != 2 or config.get("preprocess_step", 1) != 1:
+        raise ValueError("Full-population assessment requires native resolution_km: 2 and preprocess_step: 1")
     days = settings["training_days"] + settings["validation_days"]
     if set(days) != set(config["days"]):
         raise ValueError("Full ABI mode must partition every configured day")
@@ -76,8 +79,9 @@ def validate_settings(settings, config):
         raise ValueError("Full ABI inputs must be native 2 km preprocessed files")
 
 
-def source_path(day):
-    return Path(f"data/preprocessed_files/abi_{day}_res2km_step1.nc")
+def source_path(day, settings=None):
+    root = (settings or {}).get("abi_input_dir", "data/preprocessing/abi")
+    return Path(preprocessed_path(day, root=root))
 
 
 def cache_path(settings, day):
@@ -109,7 +113,7 @@ def observations(settings, day, block=1):
 All native pixels are visited for block=1, including partial edge chunks.
 For block>1 only the incomplete *disk-grid* bottom/right footprint is omitted.
 """
-    with Dataset(source_path(day)) as source:
+    with Dataset(source_path(day, settings)) as source:
         configure_chunk_cache(source, settings)
         height, width = source.variables["lat_interp_grid"].shape
         planck = np.stack([np.asarray(source.variables[f"planck_{sat}"][:])[
@@ -163,7 +167,7 @@ def prepare_cache(settings, day, runner):
     del features
     runner.write(output / "index.json", {
         "day": day, "pixels": count, "planck": planck.tolist(),
-        "provenance": runner.provenance([source_path(day)], stage="features",
+        "provenance": runner.provenance([source_path(day, settings)], stage="features",
                                         identity={"day": day}),
         "scope": "Every eligible native two-satellite overlap pixel; no texture or tile screening",
     })
@@ -212,7 +216,7 @@ def prepare_stability_sample(settings, runner):
     split = max(1, int(0.8 * len(order)))
     if split == len(order):
         raise ValueError("Stability sample must contain at least one held-out feature")
-    path = Path(settings["output_dir"]) / "stability_sample.npz"
+    path = candidate_directory(settings) / "stability_sample.npz"
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(path, train_features=sample[order[:split]],
              test_features=sample[order[split:]])
@@ -235,7 +239,7 @@ def prepare_training(settings, runner):
     """
     from streaming_gmm import prepare_streaming_preprocessing
 
-    directory = Path(settings["output_dir"]) / "training_pca"
+    directory = preprocessing_directory(settings)
     directory.mkdir(parents=True, exist_ok=True)
     preprocessor = prepare_streaming_preprocessing(
         lambda: feature_batches(settings, settings["training_days"]),
@@ -292,7 +296,7 @@ def contingency_ari(matrix):
 
 def training_options(settings, workers, *, mapped=False):
     options = {"workers": workers, "chunk_rows": settings.get("gmm_chunk_points", 65536)}
-    directory = Path(settings["output_dir"]) / "training_pca"
+    directory = preprocessing_directory(settings)
     # Direct Python callers may fit without a prepared cache; the DAG requires it.
     if directory.exists():
         record = json.loads((directory / "index.json").read_text())
@@ -364,13 +368,13 @@ def score_model(settings, model, days):
 def score_candidate(settings, components, seed, runner):
     if components not in settings["components"] or seed != settings["gmm_seed"]:
         raise ValueError("GMM candidate is not configured")
-    path = Path(settings["output_dir"]) / f"candidate_k{components}_s{seed}.joblib"
+    path = candidate_directory(settings) / f"candidate_k{components}_s{seed}.joblib"
     runner.verify(path, stage="candidate", identity=candidate_identity(settings, components, seed),
                   settings=settings)
     counts, by_day, daily, mean = score_model(
         settings, joblib.load(path), settings["validation_days"]
     )
-    runner.write(Path(settings["output_dir"]) / "candidate_scores" /
+    runner.write(candidate_directory(settings) / "candidate_scores" /
                  f"k{components}_s{seed}.json", {
         "components": components, "seed": seed, "heldout_mean_log_likelihood": mean,
         "heldout_day_log_likelihood": daily, "heldout_counts": counts.tolist(),
@@ -387,7 +391,7 @@ def fit_candidate(settings, components, seed, runner, workers=1):
     from streaming_gmm import fit_streaming_gmm
     if components not in settings["components"] or seed != settings["gmm_seed"]:
         raise ValueError("GMM candidate is not configured")
-    output = Path(settings["output_dir"])
+    output = candidate_directory(settings)
     output.mkdir(parents=True, exist_ok=True)
 
     def report_progress(initialization, iteration, objective, converged):
@@ -416,15 +420,15 @@ def fit_candidate(settings, components, seed, runner, workers=1):
 
 
 def candidate_initialization_path(settings, components, seed, initialization):
-    return (Path(settings["output_dir"]) / "candidate_initializations"
+    return (candidate_directory(settings) / "candidate_initializations"
             / f"candidate_k{components}_s{seed}_i{initialization}.joblib")
 
 
 def _initialization_inputs(settings):
     return [
         *[cache_path(settings, day) for day in settings["training_days"]],
-        *([Path(settings["output_dir"]) / "training_pca"]
-          if (Path(settings["output_dir"]) / "training_pca").exists() else []),
+        *([preprocessing_directory(settings)]
+          if (preprocessing_directory(settings)).exists() else []),
     ]
 
 
@@ -574,10 +578,10 @@ def fit_initialization_sweep(settings, runner, cpus):
 
     print(f"GMM sweep: {len(pending)} pending, {cpus} allocated CPUs; "
           "one coordinator CPU where possible, up to 32 compute workers per fit", flush=True)
-    with SweepProgress(Path(settings["output_dir"]) / "sweep_logs",
+    with SweepProgress(candidate_directory(settings) / "sweep_logs",
                        pending, reused=len(jobs) - len(pending)) as progress:
         run_gmm_jobs(pending, operation, cpus)
-        manifest = Path(settings["output_dir"]) / "initialization_sweep.json"
+        manifest = candidate_directory(settings) / "initialization_sweep.json"
         _atomic_output(manifest, lambda path: runner.write(path, {
             "provenance": runner.provenance(
                 [*_initialization_inputs(settings), *paths], stage="sweep",
@@ -591,7 +595,7 @@ def fit_initialization_sweep(settings, runner, cpus):
 def combine_candidate_initializations(settings, components, seed, runner):
     if components not in settings["components"] or seed != settings["gmm_seed"]:
         raise ValueError("GMM candidate is not configured")
-    manifest = Path(settings["output_dir"]) / "initialization_sweep.json"
+    manifest = candidate_directory(settings) / "initialization_sweep.json"
     if manifest.exists():
         freshness = check_nominal_stage_provenance(
             json.loads(manifest.read_text())["provenance"], "sweep", settings,
@@ -638,7 +642,7 @@ def combine_candidate_initializations(settings, components, seed, runner):
     best_model[-1].streaming_initialization_scores_ = scores
     best_model[-1].streaming_initialization_failures_ = tuple(failures)
 
-    output = Path(settings["output_dir"])
+    output = candidate_directory(settings)
     output.mkdir(parents=True, exist_ok=True)
     path = output / f"candidate_k{components}_s{seed}.joblib"
     joblib.dump(best_model, path)
@@ -659,7 +663,7 @@ def candidates_path(settings):
 
 def summarize_candidates(settings, runner):
     """K-independent scores for one reproducible candidate per component count."""
-    output = Path(settings["output_dir"])
+    output = candidate_directory(settings)
     seed = settings["gmm_seed"]
     rows, best = [], {}
     for count in settings["components"]:
@@ -717,7 +721,7 @@ def train(settings, runner):
                             runner.SETTINGS, taxonomy_file)
     if gate["n_components"] != settings["nominal_components"]:
         raise ValueError("Scene taxonomy changed while loading nominal settings")
-    output = Path(settings["output_dir"])
+    output = candidate_directory(settings)
     output.mkdir(parents=True, exist_ok=True)
     record = read_candidates(settings, runner)
     best = record["best_by_components"][str(gate["n_components"])]
@@ -861,7 +865,7 @@ Returns library[K, 6, P].
 
 def adm_path(settings, components, form="regularized", day=None):
     """Pooled held-in library, its quadratic variant, or a per-day in-sample refit."""
-    directory = Path(settings["output_dir"]) / "component_adms"
+    directory = Path(settings.get("adm_dir", Path(settings["output_dir"]) / "component_adms"))
     if day is not None:
         if form != "regularized":
             raise ValueError("Per-day ADM libraries use the regularized form")
@@ -875,7 +879,7 @@ def selected_candidate(settings, components, runner):
     best = read_candidates(settings, runner)["best_by_components"].get(str(components))
     if best is None:
         raise ValueError(f"Component count {components} has no adequately occupied candidate")
-    path = Path(settings["output_dir"]) / f"candidate_k{components}_s{best['seed']}.joblib"
+    path = candidate_directory(settings) / f"candidate_k{components}_s{best['seed']}.joblib"
     runner.verify(path, stage="candidate",
                   identity=candidate_identity(settings, components, best["seed"]),
                   settings=settings)
@@ -901,7 +905,7 @@ def prepare_adm(settings, components, runner, form="regularized", day=None):
                   else "single-day in-sample refit (between-day/out-of-sample sensitivity)"),
         "provenance": runner.provenance([
             model_path, str(model_path) + ".json", candidates_path(settings),
-            *[source_path(value) for value in days],
+            *[source_path(value, settings) for value in days],
             *[cache_path(settings, value) / "index.json" for value in days],
         ]),
     })
@@ -996,7 +1000,7 @@ def spatial_part(settings, config, day, block, runner):
             model_path, str(model_path) + ".json",
             adm_path(settings, settings["nominal_components"]),
             str(adm_path(settings, settings["nominal_components"])) + ".json",
-            source_path(day), config["narrowband_to_broadband_coeffs_file"],
+            source_path(day, settings), config["narrowband_to_broadband_coeffs_file"],
         ]),
     })
 
@@ -1034,7 +1038,7 @@ def combine_spatial(settings, config, runner):
             adm_path(settings, settings["nominal_components"]),
             str(adm_path(settings, settings["nominal_components"])) + ".json",
             config["narrowband_to_broadband_coeffs_file"],
-            *[source_path(day) for day in settings["training_days"] +
+            *[source_path(day, settings) for day in settings["training_days"] +
               settings["validation_days"]],
         ]),
         "rows": rows, "by_day": by_day,
@@ -1078,7 +1082,7 @@ def assignment_day(settings, day, runner):
     runner.write(output / "assignment_parts" / f"day{day}.json", {
         "day": day, "transition_counts": daily.tolist(), "baseline_counts": baseline.tolist(),
         "noise_realizations": repetitions,
-        "provenance": runner.provenance([path, str(path)+".json", source_path(day)]),
+        "provenance": runner.provenance([path, str(path)+".json", source_path(day, settings)]),
     })
 
 
@@ -1111,7 +1115,7 @@ def combine_assignment(settings, runner):
     runner.write(output / "abi_assignment.json", {
         "provenance": runner.provenance([path, str(path)+".json",
                                         *sources,
-                                        *[source_path(day) for day in settings["validation_days"]]]),
+                                        *[source_path(day, settings) for day in settings["validation_days"]]]),
         "transition_counts": counts.tolist(), "transition_probabilities": probabilities.tolist(),
         "weighted_change_probability": float(population @ (1 - np.diag(probabilities))),
         "sample_change_probability": float(1 - np.trace(counts) / counts.sum()),
@@ -1183,7 +1187,7 @@ def diagnostics(settings, config, runner, components=None):
         return
     if components not in settings["components"]:
         raise ValueError("GMM component count is not configured")
-    output = Path(settings["output_dir"])
+    output = candidate_directory(settings)
     stability_path = output / "stability_sample.npz"
     runner.verify(stability_path)
     stability_metadata = read_record(str(stability_path) + ".json", runner)
@@ -1341,8 +1345,8 @@ def diagnostics(settings, config, runner, components=None):
                 str(adm_path(settings, k)) + ".json",
                 stability_path, str(stability_path) + ".json",
                 *[cache_path(settings, day) for day in settings["training_days"]],
-                *([output / "training_pca"] if (output / "training_pca").exists() else []),
-                *[source_path(day) for day in settings["validation_days"]],
+                *([preprocessing_directory(settings)] if preprocessing_directory(settings).exists() else []),
+                *[source_path(day, settings) for day in settings["validation_days"]],
                 config["narrowband_to_broadband_coeffs_file"],
             ]),
         })
@@ -1397,7 +1401,7 @@ def combine_diagnostics(settings, runner):
         "provenance": runner.provenance([
             *sources,
             candidates_path(settings),
-            *[source_path(day) for day in settings["training_days"] +
+            *[source_path(day, settings) for day in settings["training_days"] +
               settings["validation_days"]],
             *[adm_path(settings, k) for k in settings["components"]],
         ]),

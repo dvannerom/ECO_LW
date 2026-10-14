@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import yaml
+import budget_reporting
 
 from build_uncertainty_registry import _paired_statistics, _requirement_reference
 
@@ -99,7 +100,7 @@ class RegistryPlotTests(unittest.TestCase):
                                  "reason": "no support"},
             }},
         }
-        with patch.object(plotter, "check_provenance", return_value={"status": "current"}):
+        with patch.object(budget_reporting, "check_provenance", return_value={"status": "current"}):
             measured = plotter.sensitivity_budget_rows(rows, report)
             self.assertIn("nominal Sunny/ECO budget", measured[0][2])
             abi_row = next(row for row in measured if row[0] == "ABI proxy sensitivity: components_minus_1")
@@ -120,7 +121,7 @@ class RegistryPlotTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "schema"):
                 plotter.sensitivity_budget_rows(rows, report)
         report["schema_version"] = 2
-        with patch.object(plotter, "check_provenance",
+        with patch.object(budget_reporting, "check_provenance",
                           return_value={"status": "stale", "mismatches": ["code"]}):
             with self.assertRaisesRegex(ValueError, "Stale"):
                 plotter.sensitivity_budget_rows(rows, report)

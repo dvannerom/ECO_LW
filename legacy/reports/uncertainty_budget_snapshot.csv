@@ -1,0 +1,40 @@
+Contributor,ECO uncertainty sources / experiment,Impact on final broadband flux
+Radiometric noise,"RfMA Table 4.1: goal NEdT 0.4 K at 255 K in all six TIR channels; threshold 0.7 K (WV), 0.6 K (CO2), 0.4 K otherwise. Convert NEdT to channel-radiance SD with the SRF-integrated Planck derivative at 255 K. Inject zero-mean Gaussian radiance noise before scene ID; rerun the complete chain against the same noise-free cases.",Single source: nominal Sunny/ECO budget report (ECO NEdT propagated on Sunny); not a model-choice sensitivity.
+Spatial resolution,"ABI heterogeneity: compare processing native 2 km radiances then averaging broadband flux to 10 km, against averaging radiances over 5x5 pixels first then rerunning scene ID, ADM and N2BC at 10 km. Match footprints, area weights and valid masks. The 2 km result is the finer-resolution reference, not absolute truth.",Single source: nominal Sunny/ECO budget report (ABI 2-to-10 km footprint proxy); not a model-choice sensitivity.
+Scene identification,(1) GMM model sensitivity: refit n_components=6 and 7 with identical training splits and consistent downstream scene ADMs. (2) Fixed-model assignment sensitivity: randomly switch exactly 10% of valid held-out pixels to their second-ranked posterior component; keep the ADM library fixed and rerun downstream flux retrieval.,Pending: report model and assignment impacts separately; 10% is an assumed scenario.
+Radiance-to-flux conversion,"ADM model form: compare the current regularized angular function with a normalized extension adding a quadratic cos(theta) term. Fit both with identical training data; evaluate held-out scenes and matched view geometries, then propagate band fluxes through fixed N2BC. Enforce positive angular profiles and hemispheric flux normalization.","Pending model comparison. Existing angular + interaction evidence:
+Bias +0.318%; SD 0.161%; RMSE 0.356%
+Evidence freshness: current"
+Narrowband-to-broadband conversion,"Sunny library limitations: representativity, physical realism and outliers. Compare grouped held-out N2BC errors under justified regime reweighting, metadata-based physical screening and robust-fit sensitivity. Keep an untouched evaluation set; never remove scenes solely for large flux residuals. Validate realism against independent evidence.","Pending library-sensitivity experiments. Existing spectral-only evidence:
+Bias +0.002%; SD 0.470%; RMSE 0.469%
+Context: ObsReq 16 OLR: Max 0.84%
+Evidence freshness: current"
+Covariance / interactions,Matched Sunny spectral residual and angular-plus-interaction increment. Retain their covariance; add new experiments on paired cases with shared perturbations. Stage RMSEs must not be summed in quadrature.,"Not evaluated by one-at-a-time sensitivities (not additive).
+Baseline spectral/angular covariance: nominal budget report."
+Other unresolved sources,Calibration/drift; SRF and reference-domain uncertainty; CTH/parallax and registration; scene evolution; ADM population and geometry; WFOV anchoring and independent validation. Monthly sampling and stability need separate experiments.,Unquantified; excluded from the existing conditional residual.
+Total broadband-flux error,"Final target: joint propagation with bias, covariance and interactions. Current evidence combines only Sunny angular retrieval and spectral reconstruction. ObsReq 15 concerns instantaneous OLR; ObsReq 16 concerns spectral reconstruction only.","Single source: nominal Sunny/ECO budget combined row.
+Model-choice sensitivities are reported beside it, never added."
+ABI proxy sensitivity: components_minus_1,Analysis/model-choice sensitivity; ABI proxy evidence. K-1 scene taxonomy (best K-1 candidate) with its pooled ADM library,"ABI components_minus_1 (G16/G18): held-out pixel bias -0.022/-0.042, RMSE 1.403/1.297; monthly 10 km RMSE 0.413/0.405 W/m2
+Not added to the nominal uncertainty subtotal."
+ABI proxy sensitivity: components_plus_1,Analysis/model-choice sensitivity; ABI proxy evidence. K+1 scene taxonomy (best K+1 candidate) with its pooled ADM library,"ABI components_plus_1 (G16/G18): held-out pixel bias -0.180/-0.162, RMSE 2.223/2.093; monthly 10 km RMSE 0.863/0.828 W/m2
+Not added to the nominal uncertainty subtotal."
+ABI proxy sensitivity: adm_daily,Analysis/model-choice sensitivity; ABI proxy evidence. Single-day in-sample regularized ADM refit instead of the pooled held-in library,"ABI adm_daily (G16/G18): held-out pixel bias +0.024/-0.025, RMSE 0.521/0.472; monthly 10 km RMSE 0.089/0.087 W/m2
+Not added to the nominal uncertainty subtotal."
+ABI proxy sensitivity: adm_quadratic,Analysis/model-choice sensitivity; ABI proxy evidence. Two-parameter quadratic pooled ADM instead of the one-parameter regularized form,"ABI adm_quadratic (G16/G18): held-out pixel bias -0.378/-0.426, RMSE 1.149/1.180; monthly 10 km RMSE 0.850/0.900 W/m2
+Not added to the nominal uncertainty subtotal."
+ABI proxy sensitivity: n2b_quadratic,Analysis/model-choice sensitivity; ABI proxy evidence. Quadratic instead of cubic narrowband-to-broadband regression,"ABI n2b_quadratic (G16/G18): held-out pixel bias +1.914/+1.932, RMSE 3.545/3.551; monthly 10 km RMSE 2.954/3.012 W/m2
+Not added to the nominal uncertainty subtotal."
+Sunny/ECO sensitivity: components_minus_1,Analysis/model-choice sensitivity; conditional Sunny/ECO evidence. K-1 ABI taxonomy applied to Sunny files,"ECO/Sunny components_minus_1: bias -0.098; RMSE 0.569 W/m2 (0.228%)
+Not added to the nominal uncertainty subtotal."
+Sunny/ECO sensitivity: components_plus_1,Analysis/model-choice sensitivity; conditional Sunny/ECO evidence. K+1 ABI taxonomy applied to Sunny files,"ECO/Sunny components_plus_1: bias -0.231; RMSE 0.834 W/m2 (0.382%)
+Not added to the nominal uncertainty subtotal."
+Sunny/ECO sensitivity: adm_per_file,Analysis/model-choice sensitivity; conditional Sunny/ECO evidence. Per-file multi-view regularized fit instead of the pooled scene library,"ECO/Sunny adm_per_file: bias -0.011; RMSE 1.143 W/m2 (0.576%)
+Not added to the nominal uncertainty subtotal."
+Sunny/ECO sensitivity: adm_quadratic,Analysis/model-choice sensitivity; conditional Sunny/ECO evidence. Pooled quadratic scene shape instead of the regularized form,"ECO/Sunny adm_quadratic: bias -0.151; RMSE 0.165 W/m2 (0.062%)
+Not added to the nominal uncertainty subtotal."
+Sunny/ECO sensitivity: n2bc_stratified,Analysis/model-choice sensitivity; conditional Sunny/ECO evidence. Separate clear/cloud N2BC with known regime instead of one global N2BC,"ECO/Sunny n2bc_stratified: bias +0.009; RMSE 0.499 W/m2 (0.239%)
+Not added to the nominal uncertainty subtotal."
+Sunny/ECO sensitivity: n2bc_robust,Analysis/model-choice sensitivity; conditional Sunny/ECO evidence. Huber-weighted instead of least-squares N2BC,"ECO/Sunny n2bc_robust: bias +0.027; RMSE 0.111 W/m2 (0.069%)
+Not added to the nominal uncertainty subtotal."
+Sunny/ECO sensitivity: n2bc_degree3,Analysis/model-choice sensitivity; conditional Sunny/ECO evidence. Cubic instead of quadratic N2BC,"ECO/Sunny n2bc_degree3: bias +0.029; RMSE 0.549 W/m2 (0.264%)
+Not added to the nominal uncertainty subtotal."

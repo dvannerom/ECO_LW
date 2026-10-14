@@ -15,6 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from uncertainty import check_provenance
+from budget_reporting import nominal_budget_table
 from plot_n_components import plot_n_components
 
 
@@ -74,36 +75,8 @@ def plot(report):
     diagnostics = Path(settings["diagnostic_figure_dir"])
     output.mkdir(parents=True, exist_ok=True)
     diagnostics.mkdir(parents=True, exist_ok=True)
-    names = {
-        "spectral": "N2BC reconstruction (within-library)",
-        "angular": "Scene-ADM approximation / within-scene diversity",
-        "radiometric": "Radiometric noise (scene label held fixed)",
-        "assignment": "Noise-mediated scene assignment (ABI-to-ECO assumption)",
-        "total": "Conditional joint subtotal (not full ECO uncertainty)",
-        "spatial": "Spatial processing: ABI 2-to-10 km proxy",
-        "combined": "Combined budget (spatial independent; not full ECO uncertainty)",
-    }
-    records = []
-    for row in report["rows"]:
-        records.append([
-            names[row["id"]], f"{row['bias_w_m2']:+.4f}", f"{row['scene_sd_w_m2']:.4f}",
-            f"{row['random_sd_w_m2']:.4f}", f"{row['ensemble_rmse_w_m2']:.4f}",
-        ])
-        if row["negative_corrected_scene_variance"]:
-            records[-1][2] = "Below MC resolution"
+    headers, records = nominal_budget_table(report)
     proxy = report["assignment_transfer"]
-    records.extend([
-        ["Training / library estimation variability", "Unquantified", "Unquantified", "Unquantified", "--"],
-        ["ECO spatial PSF / spatial-noise interactions", "Unquantified", "Unquantified", "Unquantified", "--"],
-        ["Calibration, SRF, registration, evolution, library discrepancy",
-         "Unquantified", "Unquantified", "Unquantified", "--"],
-    ])
-    headers = ["Error source", "Bias\nW/m2", "Scene-dependent SD\nW/m2", "Random SD\nW/m2",
-               "RMSE\nW/m2"]
-    with (Path(settings["output_dir"])/"numerical_budget.csv").open("w", newline="") as target:
-        writer = csv.writer(target)
-        writer.writerow([text.replace("\n", " ") for text in headers])
-        writer.writerows(records)
     figure, axis = plt.subplots(figsize=(18, 10))
     axis.axis("off")
     table = axis.table(cellText=records, colLabels=headers, bbox=[0, .15, 1, .75],

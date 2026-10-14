@@ -31,7 +31,7 @@ if __name__ == '__main__':
 	#channel = args.channel
 	#scene = args.scene
 
-	data_file = "data/preprocessed_files/abi_"+str(day)+"_res"+str(res)+"km_step1.nc"
+	data_file = "data/preprocessing/abi/abi_"+str(day)+"_res"+str(res)+"km_step1.nc"
 	scene_file = scene_id_path(day, res, n_components)
 
 	#res = data_file.split("/")[-1].split(".")[0].split("_")[1]
@@ -168,7 +168,7 @@ if __name__ == '__main__':
 
 			# Save uncorrected and corrected radiances
 			write_dataset(
-				"data/ADM/ADM_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+"_scene"+str(scene)+".nc",
+				"data/abi_proxy/diagnostics/adm_legacy/ADM_"+str(day)+"_res"+str(res)+"km_C"+str(channel)+"_scene"+str(scene)+".nc",
 				{"b": popt[0], "norm": norm_ADM},
 				{"b": (), "norm": ()},
 				attrs={"product": "ECO angular distribution model", "channel": channel, "scene": scene},

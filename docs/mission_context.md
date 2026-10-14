@@ -64,6 +64,16 @@ Keep this file updated whenever new mission information arrives.
 
 ## 1a. ECO_LW evaluation framework
 
+- [user 2026-10-14] The nominal-production branch should expose retrieved flux
+  products as well as uncertainty results; its name denotes a processing chain,
+  not only a report-generation branch.
+- [derived 2026-10-14] Nominal products expose the clean grouped-held-out
+  ECO-channel narrowband and broadband retrievals on Sunny simulation cases.
+  They are distinguished from all-library application models, from the separate
+  spectral-scenario estimator, and from geolocated ABI products. This
+  organizational change does not create ECO flight observations or justify
+  geographical/monthly ECO products.
+
 - [user 2026-10-11] Determine the GMM component count from ABI observations:
   angular coverage and other component-selection diagnostics must evaluate
   ABI data, not Sunny simulations. Apply the selected ABI-trained GMM to Sunny
@@ -636,7 +646,8 @@ RfMA states it.
   of the narrow-band to broadband FLUX regression = 1.5 % LW, 0.6 % SW, without
   any scene stratification.** Compare to ObsReq 16 (0.84 % OLR) — see D7.
 - [user 2026-10-01] The same GERB/Clerbaux LW spectral database is already in
-  `data/Sunny`; there is no need to obtain or replace it with another database.
+  `data/inputs/sunny` (originally `data/Sunny`, relocated during workflow-layout
+  rationalization); there is no need to obtain or replace it with another database.
   Local inventory confirms 2,310 clear-sky and 2,310 cloudy spectra, with
   matching IDs 0000-2309 (4,620 files total, two records per index). The file
   headers confirm GERB/Clerbaux provenance, but do not establish whether the

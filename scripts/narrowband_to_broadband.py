@@ -1,6 +1,6 @@
 """Narrowband BTs -> daily broadband LW flux (W m-2) per satellite.
 
-Evaluates the N2B polynomial (default: cubic, data/models/
+Evaluates the N2B polynomial (default: cubic, data/abi_proxy/models/n2b/
 narrowband_to_broadband_coeffs.json) in float64 and F = sigma*T_eff^4.
 NaN where any channel BT is NaN (unidentified scene, invalid radiance or
 VZA > max) or flux is outside [50, 1000] W m-2.
@@ -15,6 +15,7 @@ from netCDF4 import Dataset
 
 from abi_product import SATELLITES, broadband_flux, create_product, row_slabs
 from broadband import load_regression_coefficients
+from product_paths import broadband_path, narrowband_path
 
 
 def main():
@@ -22,14 +23,16 @@ def main():
 	parser.add_argument("-d", "--day", type=int, required=True)
 	parser.add_argument("-r", "--resolution", type=int, default=2)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
-	parser.add_argument("--coefficients-file", default="data/models/narrowband_to_broadband_coeffs.json")
+	parser.add_argument("--coefficients-file", default="data/abi_proxy/models/n2b/narrowband_to_broadband_coeffs.json")
 	parser.add_argument("--form", default="cubic", choices=("linear", "quadratic", "cubic"))
 	parser.add_argument("--chunk-rows", type=int, default=256)
+	parser.add_argument("--inputs", nargs=6, help="Six narrowband NetCDF paths in processing order")
+	parser.add_argument("--output", help="Daily broadband output NetCDF")
 	args = parser.parse_args()
 
 	regression = load_regression_coefficients(args.coefficients_file, args.form)
-	inputs = [Dataset(f"data/narrowband_flux/narrowband_flux_{args.day}_res{args.resolution}km_C{channel}.nc")
-	          for channel in range(6)]
+	inputs = [Dataset(path) for path in (args.inputs or [
+		narrowband_path(args.day, args.resolution, channel) for channel in range(6)])]
 	try:
 		height, width = inputs[0].variables["lat"].shape
 		attrs = {"product": "ECO daily broadband flux", "n2b_form": args.form,
@@ -38,7 +41,7 @@ def main():
 		for name in ("adm_library", "adm_form", "max_vza_deg"):
 			if name in inputs[0].ncattrs():
 				attrs[name] = inputs[0].getncattr(name)
-		target = create_product(f"data/broadband_flux/broadband_flux_{args.day}_res{args.resolution}km.nc",
+		target = create_product(args.output or broadband_path(args.day, args.resolution),
 		                        height, width, ("flux_G16", "flux_G18", "lat", "lon"), attrs, args.chunk_rows)
 		try:
 			for start, stop in row_slabs(height, args.chunk_rows):

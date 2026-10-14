@@ -87,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input",
         type=str,
-        default="data/monthly/monthly_flux_res2km.nc",
+        default="data/abi_proxy/products/monthly_flux/monthly_flux_res2km.nc",
         help="Monthly broadband flux NetCDF input file",
     )
     parser.add_argument(

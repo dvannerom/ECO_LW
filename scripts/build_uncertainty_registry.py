@@ -23,11 +23,11 @@ from uncertainty import (  # noqa: E402
 )
 
 
-DEFAULT_METRICS = ROOT / "data" / "uncertainty" / "eco_spectral_reconstruction.json"
-DEFAULT_N2BC_METRICS = ROOT / "data" / "uncertainty" / "eco_n2bc_stage_metrics.json"
-DEFAULT_ADM_METRICS = ROOT / "data" / "uncertainty" / "eco_adm_stage_metrics.json"
-DEFAULT_ABI_SUMMARY = ROOT / "data" / "uncertainty" / "abi_adm_proxy_summary.json"
-DEFAULT_RESIDUALS = ROOT / "data" / "uncertainty" / "eco_spectral_residuals.csv"
+DEFAULT_METRICS = ROOT / "data/nominal_production/diagnostics/eco_spectral_reconstruction.json"
+DEFAULT_N2BC_METRICS = ROOT / "data/nominal_production/diagnostics/eco_n2bc_stage_metrics.json"
+DEFAULT_ADM_METRICS = ROOT / "data/nominal_production/diagnostics/eco_adm_stage_metrics.json"
+DEFAULT_ABI_SUMMARY = ROOT / "data/abi_proxy/diagnostics/adm_proxy_summary.json"
+DEFAULT_RESIDUALS = ROOT / "data/nominal_production/diagnostics/eco_spectral_residuals.csv"
 DEFAULT_SCENARIOS = ROOT / "config" / "eco_channel_scenarios.yaml"
 DEFAULT_ERROR_BUDGET = ROOT / "config" / "error_budget.yaml"
 

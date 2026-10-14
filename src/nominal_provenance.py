@@ -12,14 +12,16 @@ from typing import Mapping
 
 STAGE_CODE_PATHS = {
     "features": (
-        "scripts/run_nominal_budget.py",
+        "src/nominal_processing.py",
+        "src/product_paths.py",
         "src/nominal_streaming.py",
         "src/nominal_provenance.py",
         "src/scene_features.py",
         "src/uncertainty.py",
     ),
     "pca": (
-        "scripts/run_nominal_budget.py",
+        "src/nominal_processing.py",
+        "src/product_paths.py",
         "src/nominal_streaming.py",
         "src/streaming_gmm.py",
         "src/nominal_provenance.py",
@@ -27,21 +29,24 @@ STAGE_CODE_PATHS = {
         "src/uncertainty.py",
     ),
     "gmm": (
-        "scripts/run_nominal_budget.py",
+        "src/nominal_processing.py",
+        "src/product_paths.py",
         "src/nominal_streaming.py",
         "src/streaming_gmm.py",
         "src/nominal_provenance.py",
         "src/uncertainty.py",
     ),
     "sweep": (
-        "scripts/run_nominal_budget.py",
+        "src/nominal_processing.py",
+        "src/product_paths.py",
         "src/nominal_streaming.py",
         "src/streaming_gmm.py",
         "src/nominal_provenance.py",
         "src/uncertainty.py",
     ),
     "candidate": (
-        "scripts/run_nominal_budget.py",
+        "src/nominal_processing.py",
+        "src/product_paths.py",
         "src/nominal_streaming.py",
         "src/streaming_gmm.py",
         "src/nominal_provenance.py",
@@ -64,7 +69,8 @@ _GMM_MAPPED = (
 
 STAGE_SCOPED_CODE = {
     "features": {
-        "scripts/run_nominal_budget.py": (
+        "src/product_paths.py": ("preprocessed_path",),
+        "src/nominal_processing.py": (
             "ROOT", "SETTINGS", "CONFIG_PATH", "TAXONOMY_PATH",
             "options", "write", "provenance", "provenance_identity",
             "check_stage_provenance", "verify",
@@ -79,7 +85,8 @@ STAGE_SCOPED_CODE = {
         ),
     },
     "pca": {
-        "scripts/run_nominal_budget.py": (
+        "src/product_paths.py": ("candidate_directory", "preprocessing_directory"),
+        "src/nominal_processing.py": (
             "ROOT", "SETTINGS", "CONFIG_PATH", "TAXONOMY_PATH",
             "options", "write", "provenance", "provenance_identity",
             "check_stage_provenance", "verify",
@@ -99,7 +106,8 @@ STAGE_SCOPED_CODE = {
         ),
     },
     "gmm": {
-        "scripts/run_nominal_budget.py": (
+        "src/product_paths.py": ("candidate_directory", "preprocessing_directory"),
+        "src/nominal_processing.py": (
             "ROOT", "SETTINGS", "CONFIG_PATH", "TAXONOMY_PATH",
             "options", "write", "provenance", "provenance_identity",
             "check_stage_provenance", "verify",
@@ -120,7 +128,8 @@ STAGE_SCOPED_CODE = {
         ),
     },
     "sweep": {
-        "scripts/run_nominal_budget.py": (
+        "src/product_paths.py": ("candidate_directory", "preprocessing_directory"),
+        "src/nominal_processing.py": (
             "ROOT", "SETTINGS", "CONFIG_PATH", "TAXONOMY_PATH",
             "options", "write", "provenance", "provenance_identity",
             "check_stage_provenance", "verify",
@@ -140,7 +149,8 @@ STAGE_SCOPED_CODE = {
         ),
     },
     "candidate": {
-        "scripts/run_nominal_budget.py": (
+        "src/product_paths.py": ("candidate_directory", "preprocessing_directory"),
+        "src/nominal_processing.py": (
             "ROOT", "SETTINGS", "CONFIG_PATH", "TAXONOMY_PATH",
             "options", "write", "provenance", "provenance_identity",
             "check_stage_provenance", "verify",

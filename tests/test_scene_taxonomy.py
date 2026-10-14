@@ -175,7 +175,7 @@ def test_production_classifier_uses_shared_spectral_model(tmp_path):
     subprocess.run([sys.executable, str(ROOT / "scripts/scene_id_pca.py"), "-f", str(source),
                     "--model", "spectral_gmm.joblib", "--gate", "gate.json", "--chunk-rows", "2"],
                    check=True, cwd=tmp_path, env={"PYTHONPATH": str(ROOT / "src")})
-    with xr.open_dataset(tmp_path / "data/scene_id/scene_id_245_res2km_2comp.nc") as result:
+    with xr.open_dataset(tmp_path / "data/abi_proxy/products/scene_id/scene_id_245_res2km_2comp.nc") as result:
         assert result.attrs["feature_set"] == "spectral_10"
         assert result.sizes["valid_pixel"] == height * width - 1
         sorted_labels = result["sorted_labels"].values.reshape(height, width)

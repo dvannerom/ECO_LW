@@ -23,7 +23,7 @@ scope:
       transferability: "Term-specific; record geometry/channel mismatches and do not treat ABI performance as ECO performance."
     gerb_clerbaux_sbdart:
       role: "Spectral simulation evidence; convolve spectra with ECO response functions for ECO retrieval estimates."
-      local_path: data/Sunny
+      local_path: data/inputs/sunny
     ceres:
       role: "Independent broadband/ADM validation where product, footprint, and sampling support the comparison."
   channel_scenarios:

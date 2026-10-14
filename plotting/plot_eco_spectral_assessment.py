@@ -13,12 +13,12 @@ import numpy as np
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_METRICS = ROOT / "data" / "uncertainty" / "eco_spectral_reconstruction.json"
-DEFAULT_RESIDUALS = ROOT / "data" / "uncertainty" / "eco_spectral_residuals.csv"
+DEFAULT_METRICS = ROOT / "data/nominal_production/diagnostics/eco_spectral_reconstruction.json"
+DEFAULT_RESIDUALS = ROOT / "data/nominal_production/diagnostics/eco_spectral_residuals.csv"
 DEFAULT_ERROR_BUDGET = ROOT / "config" / "error_budget.yaml"
 TRAINING_MODE = "abi_population_weighted"
 RESIDUAL_DEGREE = "3"
-DEFAULT_OUTPUT_DIR = ROOT / "figures" / "uncertainty" / "spectral_angular"
+DEFAULT_OUTPUT_DIR = ROOT / "figures/nominal_production/uncertainties/eco_spectral_assessment"
 
 SCENARIO_LABELS = {
     "rfma_goal_6": "RfMA goal (6 bands)",

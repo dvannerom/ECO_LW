@@ -24,16 +24,15 @@ It links to focused guides for the [workflow](docs/technical/workflow.md),
 ## Before running
 
 - Run commands from the repository root.
-- Install Snakemake and the Python packages used by the workflow in your
-  environment. This repository currently has no dependency lockfile or
-  requirements manifest.
+- Install the direct dependencies with `python -m pip install -r requirements.txt`.
+  For development, use `requirements-dev.txt`. These manifests are not lockfiles;
+  generated evidence records the runtime versions used.
 - Obtain the input data separately. Sunny spectra are expected under
-  `data/Sunny/`, channel response files under `data/goes_channels/`, and ABI
-  preprocessed files under `data/preprocessed_files/`. These large data are not
+  `data/inputs/sunny/`, channel response files under `data/inputs/goes_channels/`, and ABI
+  preprocessed files under `data/preprocessing/abi/`. These large data are not
   included in the repository.
-- ABI preprocessing currently looks for raw GOES files at paths hardcoded in
-  `scripts/preprocess_data_ABI.py` on the project HPC system. If you are not
-  using that filesystem, update those paths before running preprocessing.
+- ABI preprocessing uses the raw GOES locations configured in
+  `config.yaml`; update them if you are not using the project HPC filesystem.
 - Before running `all` or a K-dependent focused target, select and record the
   shared GMM component count as described below.
 
@@ -60,7 +59,7 @@ range and can be run before choosing K:
 ```bash
 snakemake -s workflow/Snakefile --configfile config.yaml --cores N \
     gmm_selection_diagnostics \
-    --config nominal_budget_settings=config/nominal_budget_full.yaml
+    --config nominal_budget_settings=config/gmm_component_selection.yaml
 PYTHONPATH=src python scripts/check_scene_taxonomy.py --summary
 ```
 
@@ -101,10 +100,13 @@ and monthly products and the associated ECO/Sunny uncertainty budget,
 production-aligned sensitivity analyses, and uncertainty evidence reports.
 These are connected stages in the same DAG, not separate production and
 nominal-uncertainty workflows.
-The shared selected scene-classification GMM is stored at
-`data/models/spectral_gmm.joblib` (with its provenance sidecar); uncertainty
-products and fitting diagnostics remain under `data/uncertainty/` and
-`data/diagnostics/`.
+The reviewed classifier lives under `data/scene_classification/models/`.
+Prepared ABI observations, feature caches and PCA scores live under
+`data/preprocessing/`; both production branches reference these canonical
+artifacts instead of maintaining separate copies. Component-selection evidence
+lives under `data/gmm_component_selection/`.
+The [workflow guide](docs/technical/workflow.md#artifact-ownership) defines the
+complete layout and the migration procedure for existing checkouts.
 
 Preview the full workflow, then run it with the number of CPU cores
 appropriate for your machine:
@@ -118,8 +120,8 @@ The full workflow can be computationally and storage intensive. Start with a
 dry run, and adjust `--cores` and the configured days to suit your machine.
 Snakemake runs only outputs that are missing or out of date. The full target
 requires all configured inputs and the reviewed GMM selection above. Its
-production and nominal GMM use the selected K=7; K=6 and K=8 are additionally
-fitted for the configured component-count sensitivity. It does not fit the
+production and nominal GMM use the reviewed K; enabled adjacent candidates are
+additionally fitted for the configured component-count sensitivity. It does not fit the
 full 2-15 selection sweep. See the [workflow guide](docs/technical/workflow.md)
 for target details, or the [technical documentation index](TECHNICAL_DETAILS.md)
 for the focused guides.
@@ -150,14 +152,26 @@ snakemake -s workflow/Snakefile --configfile config.yaml --cores 8 uncertainty_a
 
 | Product | Location |
 | --- | --- |
-| Daily GOES broadband flux NetCDF files | `data/broadband_flux/` |
-| Monthly GOES flux NetCDF file | `data/monthly/` |
-| ECO/Sunny assessment metrics and uncertainty registry | `data/uncertainty/` |
+| Daily GOES broadband flux NetCDF files | `data/abi_proxy/products/broadband_flux/` |
+| Monthly GOES flux NetCDF file | `data/abi_proxy/products/monthly_flux/` |
+| Clean grouped-held-out ECO/Sunny narrowband and broadband flux products | `data/nominal_production/products/{narrowband_flux,broadband_flux}/` |
+| Nominal budget, sensitivity and optional geometry assessment | `data/nominal_production/uncertainties/` |
+| Prepared ABI data, reusable features and PCA scores | `data/preprocessing/` |
+| Reviewed scene classifier and component-selection evidence | `data/scene_classification/`, `data/gmm_component_selection/` |
 | ABI proxy diagnostics and product-map figures | `figures/abi_proxy/{diagnostics,products}/` |
 | Nominal budget and uncertainty evidence | `figures/nominal_production/{diagnostics,uncertainties}/` |
 | Full component-selection review figures | `figures/gmm_component_selection/diagnostics/` |
-| Uncertainty budget table (CSV) | `docs/Uncertainty budget and propagation for ECO_LW - Sheet1.csv` |
-| Uncertainty evidence registry and gap report | `data/uncertainty/eco_uncertainty_registry.json`, `data/uncertainty/eco_uncertainty_gaps.md` |
+| Generated uncertainty budget table (CSV) | `data/nominal_production/reports/uncertainty_budget.csv` |
+| Uncertainty evidence registry and gap report | `data/nominal_production/reports/uncertainty_registry.json`, `data/nominal_production/reports/uncertainty_gaps.md` |
+
+Nominal products are simulation-case fluxes, not ECO flight observations or
+geographical/monthly maps. They retain case/group identifiers, fold IDs,
+reference fluxes, population weights, units, channel definitions and provenance.
+They are clean held-out predictions, distinct from the all-library application
+models under `data/nominal_production/models/`.
+The broader spectral-scenario assessment keeps its retrievals separately under
+`data/nominal_production/products/spectral_assessment/`; these are not substitutes
+for the nominal estimator's held-out products.
 
 ABI and monthly maps are optional offline plots of saved products; `all` does
 not request them. Narrowband NetCDF files retain ADM-corrected brightness
@@ -168,13 +182,13 @@ spectral (W m-2 per cm-1), not integrated over each channel response:
 
 ```bash
 python plotting/plot_narrowband_flux.py \
-    --input data/narrowband_flux/narrowband_flux_271_res2km_C0.nc
+    --input data/abi_proxy/products/narrowband_flux/narrowband_flux_271_res2km_C0.nc
 
 python plotting/plot_broadband_flux.py \
-    --input data/broadband_flux/broadband_flux_271_res2km.nc
+    --input data/abi_proxy/products/broadband_flux/broadband_flux_271_res2km.nc
 
 python plotting/plot_monthly_flux.py \
-    --input data/monthly/monthly_flux_res2km.nc
+    --input data/abi_proxy/products/monthly_flux/monthly_flux_res2km.nc
 ```
 
 Each narrowband map is written to
@@ -191,3 +205,13 @@ ADM-fit and ADM-curve plots default to
 `figures/abi_proxy/diagnostics/adm/`. See the [plotting guide](docs/technical/plotting.md)
 for the plotter catalogue and the [technical documentation index](TECHNICAL_DETAILS.md)
 for all technical guides.
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+The test configuration supplies the source, script and plotting import paths.
+Small synthetic end-to-end tests validate the retrieval and budget closure;
+the full-resolution production workflow is not run by the unit tests.

@@ -86,7 +86,7 @@ class SyntheticRadiometryTests(unittest.TestCase):
         # Include the full six-channel support with sufficiently fine sampling.
         self.wavelength = np.linspace(2.5, 25, 2251)
         self.responses, self.normalization = abi_response_on_grid(
-            self.wavelength, ROOT / "data" / "goes_channels"
+            self.wavelength, ROOT / "data" / "inputs" / "goes_channels"
         )
 
     def test_blackbody_roundtrip_without_pi_or_band_unit_error(self):
@@ -109,9 +109,9 @@ class SyntheticRadiometryTests(unittest.TestCase):
 
     def test_invalid_grid_or_spectrum_fails_explicitly(self):
         with self.assertRaises(ValueError):
-            abi_response_on_grid(np.linspace(10, 12, 100), ROOT / "data" / "goes_channels")
+            abi_response_on_grid(np.linspace(10, 12, 100), ROOT / "data" / "inputs" / "goes_channels")
         with self.assertRaises(ValueError):
-            abi_response_on_grid(self.wavelength[::-1], ROOT / "data" / "goes_channels")
+            abi_response_on_grid(self.wavelength[::-1], ROOT / "data" / "inputs" / "goes_channels")
         with self.assertRaises(ValueError):
             convolve_abi_radiances(
                 self.wavelength, -np.ones((len(self.wavelength), 18)),
@@ -163,7 +163,7 @@ class ComparisonIntegrationTests(unittest.TestCase):
             args = SimpleNamespace(
                 abi_files=[abi], points_per_file=100, components=2,
                 chunk_rows=3, pixel_step=1, seed=42, gmm_jobs=1,
-                sunny_dir=sunny, filter_dir=ROOT / "data" / "goes_channels",
+                sunny_dir=sunny, filter_dir=ROOT / "data" / "inputs" / "goes_channels",
                 output_dir=output, max_roundtrip_error_K=0.1,
             )
             summary = run_comparison(args)

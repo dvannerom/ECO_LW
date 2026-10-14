@@ -2,14 +2,17 @@
   "provenance": {
     "schema_version": 1,
     "code_sha256": {
-      "scripts/run_nominal_budget.py": "9ac52c5248b5db0383a2d92a185901f4a4dd501ec4852d2da70823aca8c4b0ee",
-      "src/nominal_budget.py": "42db50833762541dd913f16a179a8757f1b495c31d6b1bda7737ff381074bfc7",
+      "scripts/run_nominal_budget.py": "fa543d782973b2f8d09cbf265edb9ceebb668bde7b7a6b5cad94691e3b3ccd5e",
+      "src/nominal_budget.py": "eddb62592b3df27c422bee15d3d9a9b87b642714a847e7c9d51478cbc1c94402",
       "src/geometry_sensitivity.py": "798cf98cca302502c0e3e6766d0bd8ab7a439f43f77236f1df4f5dd192f66dea",
-      "scripts/find_nComponents.py": "2c3e2ac8065e4296692a50338273b42215af204d0d31cece23e4960da2f70adc",
+      "scripts/find_nComponents.py": "8b80dcd45dc8b12d01c2db7d68fb9e79d9b2b925c6af653f33fc497629df2b7f",
       "scripts/average_resolution.py": "127046f0868392f5f7947e0ba601e06671bfdd01407b39dfd79077289a96289b",
       "scripts/preprocess_data_ABI.py": "7811a91564933d184570aaf0a87ec5598d161359f2788dbfa046a030cd00c3a7",
       "src/broadband.py": "f658778f7e7380924f9d6185772d733066b3fb3577f964b15e76c6a95018fc9f",
       "scripts/run_sensitivity_convergence.py": "5e0847c22dcffd31a78cf07de63dc03c5a593e5805082d5a2fceee198761a924",
+      "src/nominal_streaming.py": "c3cd87ade2dd05d239913ad49e4e51098987c1bb7a7c3244b9f29f998f2b87f2",
+      "src/streaming_gmm.py": "2b7bc88a2ceb3db38fb3747a6effed1e091d03d9bc462e2f5ade7bda02155ebd",
+      "src/gmm_stability.py": "2abbc24d9ad09b7f8d9e46e8091f6fe465b5cb7baa357c8f526cd9971c3f2866",
       "src/abi_sunny_comparison.py": "5f1829147370572e0c22d66a81cd7dc8ac6c64f432a5f257453a888e5bf75a62",
       "src/eco_spectral_response.py": "39ff58c480a9d15ece81b356c663843db5081dc7d39fef115b8ea5633cb123c9",
       "src/sensitivity.py": "ca98d560ab3db8ea01cc74c066f0950995b40f6cb7d5931a987e0052afadac3d",
@@ -31,17 +34,17 @@
         "exists": true,
         "kind": "file",
         "size_bytes": 5922,
-        "mtime_ns": 1791287151306939272
+        "mtime_ns": 1791566436305220581
       },
       "1": {
         "path": "data/uncertainty/nominal/spectral_gmm.joblib.json",
         "exists": true,
         "kind": "file",
-        "size_bytes": 6884,
-        "mtime_ns": 1791287151308262708
+        "size_bytes": 7182,
+        "mtime_ns": 1791566436306367706
       },
       "2": {
-        "path": "data/uncertainty_runs/convergence/cache/42/246",
+        "path": "data/uncertainty_experiments/convergence/cache/42/246",
         "exists": true,
         "kind": "directory_inventory",
         "file_count": 11,
@@ -57,7 +60,7 @@
         "mtime_ns": 1789975051914457061
       },
       "4": {
-        "path": "data/uncertainty_runs/convergence/cache/42/252",
+        "path": "data/uncertainty_experiments/convergence/cache/42/252",
         "exists": true,
         "kind": "directory_inventory",
         "file_count": 11,
@@ -73,7 +76,7 @@
         "mtime_ns": 1789974982128520371
       },
       "6": {
-        "path": "data/uncertainty_runs/convergence/cache/42/259",
+        "path": "data/uncertainty_experiments/convergence/cache/42/259",
         "exists": true,
         "kind": "directory_inventory",
         "file_count": 11,
@@ -89,7 +92,7 @@
         "mtime_ns": 1789975017265121100
       },
       "8": {
-        "path": "data/uncertainty_runs/convergence/cache/42/271",
+        "path": "data/uncertainty_experiments/convergence/cache/42/271",
         "exists": true,
         "kind": "directory_inventory",
         "file_count": 11,
@@ -116,106 +119,106 @@
   },
   "transition_counts": [
     [
-      180881,
-      8806,
+      180874,
+      8810,
       0,
-      6228,
-      3328,
-      6767
+      6232,
+      3320,
+      6774
     ],
     [
-      16223,
-      462391,
+      16219,
+      462390,
       0,
-      456,
-      2006,
-      16054
+      454,
+      2008,
+      16059
     ],
     [
       0,
       0,
-      44415,
+      44419,
       0,
-      27242,
+      27238,
       43
     ],
     [
-      2537,
-      224,
+      2535,
+      223,
       0,
-      181360,
-      2632,
-      3387
+      181362,
+      2629,
+      3391
     ],
     [
-      1155,
+      1159,
       143,
-      3523,
-      6056,
-      287192,
+      3538,
+      6044,
+      287185,
       4601
     ],
     [
       3954,
-      9360,
-      71,
-      5437,
-      6072,
-      207456
+      9358,
+      72,
+      5432,
+      6075,
+      207459
     ]
   ],
   "transition_probabilities": [
     [
-      0.8780204844425028,
-      0.04274549779136935,
+      0.8779865055094412,
+      0.042764914324547355,
       0.0,
-      0.030231542158147662,
-      0.016154555604096888,
-      0.032847920003883306
+      0.030250958691325665,
+      0.016115722537740886,
+      0.032881898936944806
     ],
     [
-      0.03263331522941685,
-      0.9301208939311649,
+      0.03262526904431436,
+      0.9301188823848893,
       0.0,
-      0.0009172651016836642,
-      0.004035161828897874,
-      0.03229336390883672
+      0.0009132420091324201,
+      0.004039184921449118,
+      0.03230342164021483
     ],
     [
       0.0,
       0.0,
-      0.6194560669456067,
+      0.6195118549511855,
       0.0,
-      0.3799442119944212,
+      0.37988842398884237,
       0.000599721059972106
     ],
     [
-      0.013342800042074261,
-      0.0011780793099821184,
+      0.013332281476806564,
+      0.0011728200273482697,
       0.0,
-      0.9538234984748081,
-      0.013842431892289892,
-      0.017813190280845694
+      0.9538340170400758,
+      0.013826654044388346,
+      0.017834227411381087
     ],
     [
-      0.003816037268312023,
+      0.0038292529817953547,
       0.0004724617570291076,
-      0.011639739650444379,
-      0.020008590213764166,
-      0.948861796676248,
+      0.011689298576006871,
+      0.01996894307331417,
+      0.9488386691776522,
       0.015201374434202266
     ],
     [
       0.017017430600387348,
-      0.04028405422853454,
-      0.00030557348827200346,
-      0.023400043038519475,
-      0.026132989025177532,
-      0.8928599096191091
+      0.040275446524639553,
+      0.00030987734021949647,
+      0.02337852377878201,
+      0.026145900581020013,
+      0.8928728211749516
     ]
   ],
-  "weighted_change_probability": 0.0903081144728251,
-  "sample_change_probability": 0.09087,
+  "weighted_change_probability": 0.09031222778822919,
+  "sample_change_probability": 0.09087400000000001,
   "baseline_sample_counts": [
     6867,
     16571,
@@ -227,211 +230,213 @@
   "by_day_transition_counts": {
     "246": [
       [
-        35296,
-        1495,
+        35291,
+        1496,
         0,
-        1111,
-        588,
-        510
+        1114,
+        587,
+        512
       ],
       [
-        3260,
-        139434,
+        3259,
+        139436,
         0,
-        202,
+        201,
         557,
         2977
       ],
       [
         0,
         0,
-        14191,
+        14200,
         0,
-        7637,
+        7628,
         42
       ],
       [
-        663,
-        31,
+        661,
+        30,
         0,
-        34862,
-        506,
-        898
+        34866,
+        504,
+        899
       ],
       [
-        295,
+        294,
         44,
-        1120,
-        1176,
-        60216,
+        1130,
+        1173,
+        60210,
         749
       ],
       [
         361,
-        2067,
-        34,
-        1541,
-        1051,
-        60316
+        2064,
+        35,
+        1546,
+        1049,
+        60315
       ]
     ],
     "252": [
       [
-        42751,
-        1566,
+        42755,
+        1563,
         0,
-        1589,
-        777,
-        1347
+        1588,
+        776,
+        1348
       ],
       [
-        4215,
-        113744,
+        4217,
+        113739,
         0,
-        96,
-        894,
-        2731
+        95,
+        895,
+        2734
       ],
       [
         0,
         0,
-        13277,
+        13280,
         0,
-        8683,
+        8680,
         0
       ],
       [
-        781,
+        778,
         135,
         0,
-        57713,
+        57715,
         658,
-        683
+        684
       ],
       [
-        294,
+        297,
         33,
-        1010,
-        1651,
-        72688,
-        1364
+        1009,
+        1649,
+        72687,
+        1365
       ],
       [
         839,
-        1145,
+        1143,
         37,
-        1076,
-        1574,
-        44199
+        1072,
+        1570,
+        44209
       ]
     ],
     "259": [
       [
-        51852,
-        2264,
+        51849,
+        2267,
         0,
-        1515,
+        1517,
         747,
-        1042
+        1040
       ],
       [
-        4567,
-        128956,
+        4569,
+        128950,
         0,
         87,
-        207,
-        4243
+        208,
+        4246
       ],
       [
         0,
         0,
-        7150,
+        7148,
         0,
-        4610,
+        4612,
         0
       ],
       [
-        398,
+        399,
         11,
         0,
         38091,
-        575,
+        574,
         585
       ],
       [
         158,
         0,
-        543,
-        1193,
-        69887,
-        1419
+        549,
+        1190,
+        69885,
+        1418
       ],
       [
-        496,
-        2856,
+        497,
+        2859,
         0,
-        916,
-        1739,
-        46403
+        911,
+        1742,
+        46401
       ]
     ],
     "271": [
       [
-        50982,
-        3481,
+        50979,
+        3484,
         0,
         2013,
-        1216,
-        3868
+        1210,
+        3874
       ],
       [
-        4181,
-        80257,
+        4174,
+        80265,
         0,
         71,
         348,
-        6103
+        6102
       ],
       [
         0,
         0,
-        9797,
+        9791,
         0,
-        6312,
+        6318,
         1
       ],
       [
-        695,
+        697,
         47,
         0,
-        50694,
+        50690,
         893,
-        1221
+        1223
       ],
       [
-        408,
+        410,
         66,
         850,
-        2036,
-        84401,
+        2032,
+        84403,
         1069
       ],
       [
-        2258,
+        2257,
         3292,
         0,
-        1904,
-        1708,
-        56538
+        1903,
+        1714,
+        56534
       ]
     ]
   },
   "sample_pixels": 50000,
   "noise_realizations": 30,
   "nedt_k_at_255": 0.4,
+  "noise_model": "mean_preserving_lognormal",
   "assumptions": [
     "Observed ABI radiances treated as truth; existing ABI noise is not removed.",
-    "Fixed clean-trained GMM; independent Gaussian noise across satellites, channels and pixels.",
+    "Fixed clean-trained GMM; independent mean-preserving lognormal radiance across satellites, channels and pixels.",
+    "Radiance SD matches NEdT times the ABI Planck derivative at 255 K; asymmetric noise is a modelling assumption.",
     "Scene-conditional ABI transitions assumed applicable to ECO and within-scene Sunny files.",
     "Transferred scene transitions independent of simulated ECO retrieval radiometric noise.",
     "Sampled eligible native overlap pixels, not global or full-disk coverage."

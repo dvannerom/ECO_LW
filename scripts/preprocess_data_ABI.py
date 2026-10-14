@@ -9,7 +9,9 @@ from scipy.interpolate import griddata, RegularGridInterpolator
 from pyresample import geometry, kd_tree
 import pyproj
 import time
-from netCDF4 import Dataset
+import yaml
+import json
+from netcdf_io import PreprocessedWriter
 from geospatial import atanh_safe, normalize_longitude
 from goes_navigation import (
     latlon_to_xy_goes,
@@ -23,50 +25,26 @@ wrap_lon = normalize_longitude
 latlon_to_xyGOES = latlon_to_xy_goes
 xyGOES_to_latlonGRID = xy_goes_to_latlon_grid
 
-def build_files(day):
-	list_G16_C08 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G16/").rglob("*C08*s2024*") if f.is_file()])
-	list_G16_C09 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409_missing_channels/G16/").rglob("*C09*s2024*") if f.is_file()])
-	list_G16_C10 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409_missing_channels/G16/").rglob("*C10*s2024*") if f.is_file()])
-	list_G16_C11 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G16/").rglob("*C11*s2024*") if f.is_file()])
-	list_G16_C12 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G16/").rglob("*C12*s2024*") if f.is_file()])
-	list_G16_C13 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409_missing_channels/G16/").rglob("*C13*s2024*") if f.is_file()])
-	list_G16_C14 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G16/").rglob("*C14*s2024*") if f.is_file()])
-	list_G16_C15 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G16/").rglob("*C15*s2024*") if f.is_file()])
-	list_G16_C16 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G16/").rglob("*C16*s2024*") if f.is_file()])
-	list_G16_CTH = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/cloud-top-height/202409/G16/").rglob("*ACHA2KMF*G16*") if f.is_file()])
-	list_G18_C08 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G18/").rglob("*C08*s2024*") if f.is_file()])
-	list_G18_C09 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409_missing_channels/G18/").rglob("*C09*s2024*") if f.is_file()])
-	list_G18_C10 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409_missing_channels/G18/").rglob("*C10*s2024*") if f.is_file()])
-	list_G18_C11 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G18/").rglob("*C11*s2024*") if f.is_file()])
-	list_G18_C12 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G18/").rglob("*C12*s2024*") if f.is_file()])
-	list_G18_C13 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409_missing_channels/G18/").rglob("*C13*s2024*") if f.is_file()])
-	list_G18_C14 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G18/").rglob("*C14*s2024*") if f.is_file()])
-	list_G18_C15 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G18/").rglob("*C15*s2024*") if f.is_file()])
-	list_G18_C16 = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/202409/G18/").rglob("*C16*s2024*") if f.is_file()])
-	list_G18_CTH = sorted([str(f.resolve()) for f in Path("/ksb-orb/science/goes/ABI/cloud-top-height/202409/G18/").rglob("*ACHA2KMF*G18*") if f.is_file()])
-
-	file_G16_C08 = [f for f in list_G16_C08 if day in f]
-	file_G16_C09 = [f for f in list_G16_C09 if day in f]
-	file_G16_C10 = [f for f in list_G16_C10 if day in f]
-	file_G16_C11 = [f for f in list_G16_C11 if day in f]
-	file_G16_C12 = [f for f in list_G16_C12 if day in f]
-	file_G16_C13 = [f for f in list_G16_C13 if day in f]
-	file_G16_C14 = [f for f in list_G16_C14 if day in f]
-	file_G16_C15 = [f for f in list_G16_C15 if day in f]
-	file_G16_C16 = [f for f in list_G16_C16 if day in f]
-	file_G16_CTH = [f for f in list_G16_CTH if day in f]
-	file_G18_C08 = [f for f in list_G18_C08 if day in f]
-	file_G18_C09 = [f for f in list_G18_C09 if day in f]
-	file_G18_C10 = [f for f in list_G18_C10 if day in f]
-	file_G18_C11 = [f for f in list_G18_C11 if day in f]
-	file_G18_C12 = [f for f in list_G18_C12 if day in f]
-	file_G18_C13 = [f for f in list_G18_C13 if day in f]
-	file_G18_C14 = [f for f in list_G18_C14 if day in f]
-	file_G18_C15 = [f for f in list_G18_C15 if day in f]
-	file_G18_C16 = [f for f in list_G18_C16 if day in f]
-	file_G18_CTH = [f for f in list_G18_CTH if day in f]
-	
-	return file_G16_C08, file_G16_C09, file_G16_C10, file_G16_C11, file_G16_C12, file_G16_C13, file_G16_C14, file_G16_C15, file_G16_C16, file_G16_CTH, file_G18_C08, file_G18_C09, file_G18_C10, file_G18_C11, file_G18_C12, file_G18_C13, file_G18_C14, file_G18_C15, file_G18_C16, file_G18_CTH
+def build_files(day, sources):
+	"""Return channel 08..16 and cloud-height file lists for G16, then G18."""
+	files = []
+	for satellite in ("G16", "G18"):
+		for channel in range(8, 17):
+			root = sources["extra_channels_root" if channel in (9, 10, 13) else "primary_root"]
+			directory = Path(root) / satellite
+			pattern = f"*C{channel:02d}*s{sources['year']}*"
+			selected = sorted(str(path.resolve()) for path in directory.rglob(pattern)
+			                  if path.is_file() and str(day) in str(path.resolve()))
+			if not selected:
+				raise ValueError(f"No {satellite} C{channel:02d} input for day {day} in {directory}")
+			files.append(selected)
+		directory = Path(sources["cloud_height_root"]) / satellite
+		selected = sorted(str(path.resolve()) for path in directory.rglob(f"*ACHA2KMF*{satellite}*")
+		                  if path.is_file() and str(day) in str(path.resolve()))
+		if not selected:
+			raise ValueError(f"No {satellite} cloud-height input for day {day} in {directory}")
+		files.append(selected)
+	return tuple(files)
 
 def preprocess_data(files, step):#, res, lon_min, lon_max, lat_max):
 	# Retrieve data and coordinates
@@ -162,56 +140,6 @@ def resample_field(source_grid, values, area_def, radius_of_influence):
 	)
 
 
-class PreprocessedWriter:
-	"""Write the preprocessing product while arrays are still short-lived."""
-
-	def __init__(self, path, height, width):
-		Path(path).parent.mkdir(parents=True, exist_ok=True)
-		self.dataset = Dataset(path, "w", format="NETCDF4")
-		self.dataset.setncattr("product", "ECO ABI preprocessed data")
-		self.dataset.createDimension("y", height)
-		self.dataset.createDimension("x", width)
-		self.dataset.createDimension("channel", 9)
-		self.dataset.createDimension("planck_parameter", 4)
-		self.variables = {}
-
-	def _create(self, name, values, dimensions):
-		array = np.asarray(values)
-		chunksizes = None
-		if dimensions == ("y", "x", "channel"):
-			chunksizes = (
-				min(self.dataset.dimensions["y"].size, 256),
-				min(self.dataset.dimensions["x"].size, 256),
-				1,
-			)
-		variable = self.dataset.createVariable(
-			name,
-			"f4" if array.dtype.kind == "f" else array.dtype,
-			dimensions,
-			zlib=True,
-			complevel=1,
-			shuffle=True,
-			chunksizes=chunksizes,
-		)
-		self.variables[name] = variable
-		return variable
-
-	def write_scalar(self, name, value):
-		self._create(name, np.asarray(value), ())[:] = value
-
-	def write_2d(self, name, values):
-		self._create(name, values, ("y", "x"))[:] = values
-
-	def write_planck(self, name, values):
-		self._create(name, values, ("channel", "planck_parameter"))[:] = values
-
-	def write_channel(self, name, channel, values):
-		if name not in self.variables:
-			self._create(name, values, ("y", "x", "channel"))
-		self.variables[name][:, :, channel] = values
-
-	def close(self):
-		self.dataset.close()
 
 
 def process_satellite(files, navigation, source_grid, corrected_grid, area_def,
@@ -282,13 +210,21 @@ if __name__ == '__main__':
 	parser.add_argument("-s", "--step", type=int, default=1)
 	parser.add_argument("-r", "--res_km", type=float, default=2)
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
+	parser.add_argument("--output", help="Preprocessed output NetCDF")
+	parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parents[1] / "config.yaml")
+	parser.add_argument("--raw-sources-json", help="Resolved raw_abi configuration (workflow override)")
 	args = parser.parse_args()
 
 	day = args.day
 	step = args.step
 	res_km = args.res_km
 	lambda_center = args.lambda_center
-	files = build_files(day)
+	if args.raw_sources_json is not None:
+		raw_sources = json.loads(args.raw_sources_json)
+	else:
+		with args.config.open() as source:
+			raw_sources = yaml.safe_load(source)["raw_abi"]
+	files = build_files(day, raw_sources)
 	navigation_g16 = load_navigation(files[:10], step)
 	navigation_g18 = load_navigation(files[10:], step)
 
@@ -326,8 +262,8 @@ if __name__ == '__main__':
 		area_extent=(xmin, ymin, xmax, ymax),
 	)
 
-	output_path = (
-		f"data/preprocessed_files/abi_{day}_res{int(res_km)}km_step{step}.nc"
+	output_path = args.output or (
+		f"data/preprocessing/abi/abi_{day}_res{int(res_km)}km_step{step}.nc"
 	)
 	writer = PreprocessedWriter(output_path, height, width)
 	try:

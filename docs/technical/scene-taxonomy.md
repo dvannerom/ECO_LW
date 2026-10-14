@@ -9,9 +9,9 @@ automatically.
 The active selection and diagnostics identity are recorded in
 [`config/scene_taxonomy.yaml`](../../config/scene_taxonomy.yaml). The
 K-independent full-population diagnostics use
-[`config/nominal_budget_full.yaml`](../../config/nominal_budget_full.yaml);
+[`config/gmm_component_selection.yaml`](../../config/gmm_component_selection.yaml);
 the normal production profile is
-[`config/nominal_budget_production.yaml`](../../config/nominal_budget_production.yaml).
+[`config/nominal_production.yaml`](../../config/nominal_production.yaml).
 K-dependent workflow rules check the taxonomy gate and stop if the selection
 is missing or no longer matches the reviewed diagnostics.
 
@@ -22,7 +22,7 @@ is missing or no longer matches the reviewed diagnostics.
    ```bash
    snakemake -s workflow/Snakefile --configfile config.yaml --cores N \
        gmm_selection_diagnostics \
-       --config nominal_budget_settings=config/nominal_budget_full.yaml
+       --config nominal_budget_settings=config/gmm_component_selection.yaml
    ```
 
 2. Review the table and figures under

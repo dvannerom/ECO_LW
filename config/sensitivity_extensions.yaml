@@ -1,5 +1,5 @@
 schema_version: 2
-output_dir: data/uncertainty_runs/extensions
+output_dir: data/nominal_production/uncertainties/geometry
 figure_dir: figures/nominal_production/uncertainties/extensions
 noise_seeds: [42, 73, 109, 151, 197]
 geometry_sets:

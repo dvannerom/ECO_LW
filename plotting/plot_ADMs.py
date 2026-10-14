@@ -25,7 +25,7 @@ def plot_adm_scenes(
 
 	fig = plt.figure(figsize=(10, 6))
 	for scene in range(n_components):
-		adm_file = f"data/ADM/ADM_{day}_res{resolution}km_C{channel}_scene{scene}.nc"
+		adm_file = f"data/abi_proxy/diagnostics/adm_legacy/ADM_{day}_res{resolution}km_C{channel}_scene{scene}.nc"
 		adm_data = load_data(adm_file, variable_names=("b",))
 		plt.plot(viewing_angle, radiance_linear(viewing_angle, adm_data["b"]), label=f"Scene {scene}")
 

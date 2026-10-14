@@ -41,6 +41,7 @@ def main():
 		help="Verified scene-taxonomy gate JSON (scripts/check_scene_taxonomy.py)")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	parser.add_argument("--chunk-rows", type=int, default=512)
+	parser.add_argument("--output", help="Scene-label output NetCDF")
 	parser.add_argument(
 		"--label-order",
 		choices=("c14", "c14_btd14_08"),
@@ -79,7 +80,7 @@ def main():
 	sorted_labels = np.full(n_pixels, np.nan, dtype=np.float32)
 	sorted_labels[valid] = lookup[labels[valid]]
 
-	out_path = scene_id_path(day, int(res.removeprefix("res").removesuffix("km")), n_components)
+	out_path = args.output or scene_id_path(day, int(res.removeprefix("res").removesuffix("km")), n_components)
 	write_dataset(
 		out_path,
 		{

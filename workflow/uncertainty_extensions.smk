@@ -22,7 +22,7 @@ rule eco_geometry_diagnostics:
     input:
         cache=f"{NOM_DIR}/sunny.npz",
         cache_metadata=f"{NOM_DIR}/sunny.npz.json",
-        model=f"{NOM_DIR}/cv_models.joblib",
+        model=f"{NOM_MODEL_DIR}/cv_models.joblib",
         budget=f"{NOM_DIR}/budget_report.json",
         residuals=f"{NOM_DIR}/residuals.npz",
         code=EXT_COMMON

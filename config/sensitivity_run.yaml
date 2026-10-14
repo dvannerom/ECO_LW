@@ -11,7 +11,7 @@
 # config/scene_taxonomy.yaml, never from here. Spatial, radiometric and
 # assignment terms have a single source: the nominal budget report.
 schema_version: 2
-output_dir: data/uncertainty/sensitivity
+output_dir: data/nominal_production/uncertainties/sensitivity
 figure_dir: figures/nominal_production/uncertainties/sensitivity
 
 # Paired-difference aggregation: native 2 km pixels, 10 km cells (5x5 blocks)

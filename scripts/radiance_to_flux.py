@@ -27,11 +27,7 @@ from abi_product import (
     read_satellite, row_slabs, satellite_chain, scene_labels,
 )
 from sensitivity import angular_integral
-from product_paths import scene_id_path
-
-
-def narrowband_path(day, resolution, channel):
-	return f"data/narrowband_flux/narrowband_flux_{day}_res{resolution}km_C{channel}.nc"
+from product_paths import narrowband_path, preprocessed_path, scene_id_path
 
 
 def main():
@@ -43,13 +39,17 @@ def main():
 	                    help="Pooled scene ADM library joblib (with .json sidecar)")
 	parser.add_argument("--max-vza", type=float, default=70.)
 	parser.add_argument("--chunk-rows", type=int, default=256)
+	parser.add_argument("--input", help="Preprocessed ABI NetCDF")
+	parser.add_argument("--scene-input", help="Saved scene labels")
+	parser.add_argument("--outputs", nargs=6, help="Six channel output paths in processing order")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	args = parser.parse_args()
 
 	library, form, metadata = load_adm_library(args.adm_library, args.n_components)
 	integral = angular_integral(library, form)
-	radiance_file = f"data/preprocessed_files/abi_{args.day}_res{args.resolution}km_step1.nc"
-	scene_file = scene_id_path(args.day, args.resolution, args.n_components)
+	radiance_file = args.input or preprocessed_path(args.day, args.resolution)
+	scene_file = args.scene_input or scene_id_path(args.day, args.resolution, args.n_components)
+	outputs = args.outputs or [narrowband_path(args.day, args.resolution, channel) for channel in range(6)]
 	attrs = {
 		"product": "ECO ADM-corrected narrowband BT and spectral irradiance",
 		"spectral_irradiance": (
@@ -65,7 +65,7 @@ def main():
 	with Dataset(radiance_file) as source, Dataset(scene_file) as scene:
 		height, width = grid_shape(source)
 		planck = {sat: planck_coefficients(source, sat) for sat in SATELLITES}
-		targets = [create_product(narrowband_path(args.day, args.resolution, channel), height, width,
+		targets = [create_product(outputs[channel], height, width,
 		                          ("BT_G16", "BT_G18",
 		                           "spectral_irradiance_G16",
 		                           "spectral_irradiance_G18", "lat", "lon"),

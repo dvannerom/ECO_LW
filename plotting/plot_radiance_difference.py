@@ -101,7 +101,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     data_file = args.input or (
-        f"data/preprocessed_files/abi_{args.day}_res{args.resolution}km_step1.nc"
+        f"data/preprocessing/abi/abi_{args.day}_res{args.resolution}km_step1.nc"
     )
     plot_radiance_difference(
         data_file,

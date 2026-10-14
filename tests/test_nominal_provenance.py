@@ -170,7 +170,7 @@ def test_scoped_source_hash_ignores_unrelated_downstream_function(tmp_path):
 
 
 def test_runner_downstream_implementation_is_outside_upstream_scope(tmp_path):
-    relative = "scripts/run_nominal_budget.py"
+    relative = "src/nominal_processing.py"
     source = tmp_path / "run_nominal_budget.py"
     original_text = (ROOT / relative).read_text()
     symbols = STAGE_SCOPED_CODE["features"][relative]
@@ -182,6 +182,21 @@ def test_runner_downstream_implementation_is_outside_upstream_scope(tmp_path):
         1,
     ))
     assert scoped_code_sha256(source, symbols) == original
+
+
+def test_nominal_product_naming_is_outside_upstream_scope(tmp_path):
+    relative = "src/product_paths.py"
+    source = tmp_path / "product_paths.py"
+    original_text = (ROOT / relative).read_text()
+    for stage in ("features", "pca", "gmm", "sweep", "candidate"):
+        symbols = STAGE_SCOPED_CODE[stage][relative]
+        source.write_text(original_text)
+        original = scoped_code_sha256(source, symbols)
+        source.write_text(original_text.replace(
+            "def nominal_product_path(root, scenario, kind):",
+            "def nominal_product_path(root, scenario, kind):\n    downstream_product_marker = True",
+        ))
+        assert scoped_code_sha256(source, symbols) == original
 
 
 def test_gmm_source_identity_ignores_callbacks_but_tracks_fit_arguments(tmp_path):
@@ -210,7 +225,7 @@ def test_gmm_source_identity_ignores_callbacks_but_tracks_fit_arguments(tmp_path
 
 
 def test_upstream_workflow_uses_stage_local_code_and_signatures():
-    workflow = (ROOT / "workflow/nominal_budget.smk").read_text()
+    workflow = (ROOT / "workflow/scene_classification.smk").read_text()
 
     def rule_body(name):
         match = re.search(
@@ -219,10 +234,10 @@ def test_upstream_workflow_uses_stage_local_code_and_signatures():
         assert match is not None
         return match.group(1)
 
-    features = rule_body("prepare_nominal_full_abi")
-    pca = rule_body("prepare_nominal_full_training")
-    sweep = rule_body("fit_nominal_full_sweep")
-    candidate = rule_body("fit_nominal_full_candidate")
+    features = rule_body("prepare_abi_features")
+    pca = rule_body("prepare_scene_training")
+    sweep = rule_body("fit_scene_candidates")
+    candidate = rule_body("combine_scene_candidate")
 
     assert "code=NOM_FEATURE_CODE" in features and "stage_signature=" in features
     assert "code=NOM_PCA_CODE" in pca and "stage_signature=" in pca
@@ -239,7 +254,7 @@ def test_upstream_workflow_uses_stage_local_code_and_signatures():
         paths = stage_code_paths(stage)
         assert not any("geometry" in path or "adm" in path or "sensitivity" in path
                        for path in paths)
-        assert "scripts/run_nominal_budget.py" not in paths
+        assert "src/nominal_processing.py" not in paths
         assert "src/nominal_streaming.py" not in paths
         assert "src/streaming_gmm.py" not in paths
     gmm_source = STAGE_SCOPED_CODE["gmm"]["src/streaming_gmm.py"]
@@ -277,12 +292,12 @@ def _write_fixture_abi(path):
 
 def test_real_feature_pca_and_initialization_provenance_resume(tmp_path, monkeypatch):
     import nominal_streaming as streaming
-    import run_nominal_budget as runner
+    import nominal_processing as runner
     from uncertainty import check_provenance
 
     source = tmp_path / "abi_245.nc"
     _write_fixture_abi(source)
-    monkeypatch.setattr(streaming, "source_path", lambda day: source)
+    monkeypatch.setattr(streaming, "source_path", lambda day, settings=None: source)
     settings = {
         "training_days": [245], "validation_days": [246, 247],
         "cache_root": str(tmp_path / "features"),
@@ -480,7 +495,7 @@ def test_real_snakemake_dryrun_reuses_candidate_on_unrelated_config_and_k_growth
 
     # Seed synthetic ABI input and completed nominal outputs. Future mtimes keep
     # this strictly a dry-run DAG validation; no scientific workflow job runs.
-    preprocessed = work / "data/preprocessed_files/abi_245_res2km_step1.nc"
+    preprocessed = work / "data/preprocessing/abi/abi_245_res2km_step1.nc"
     preprocessed.parent.mkdir(parents=True)
     preprocessed.write_bytes(b"dry-run input placeholder")
     cache = Path(nominal["cache_root"]) / "245"

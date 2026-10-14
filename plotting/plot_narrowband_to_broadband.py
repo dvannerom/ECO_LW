@@ -14,12 +14,10 @@ from sklearn.preprocessing import PolynomialFeatures
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-SCRIPTS = ROOT / "scripts"
-for path in (SRC, SCRIPTS):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
-from compute_temperature_SBDART import (
+from channel_emulation import (
     DEFAULT_CHANNEL_A,
     DEFAULT_CHANNEL_B,
     SIGMA,
@@ -28,11 +26,11 @@ from compute_temperature_SBDART import (
 from spectral_response import CHANNELS, load_goes_filters, load_power_law
 
 
-DEFAULT_COEFFICIENTS = ROOT / "data" / "models" / "narrowband_to_broadband_coeffs.json"
-DEFAULT_SUNNY_DIR = ROOT / "data" / "Sunny"
-DEFAULT_FILTER_DIR = ROOT / "data" / "goes_channels"
-DEFAULT_POWER_LAW = ROOT / "data" / "models" / "channel_radiance_power_law.json"
-DEFAULT_ECO_RESIDUALS = ROOT / "data" / "uncertainty" / "eco_spectral_residuals.csv"
+DEFAULT_COEFFICIENTS = ROOT / "data/abi_proxy/models/n2b/narrowband_to_broadband_coeffs.json"
+DEFAULT_SUNNY_DIR = ROOT / "data/inputs/sunny"
+DEFAULT_FILTER_DIR = ROOT / "data/inputs/goes_channels"
+DEFAULT_POWER_LAW = ROOT / "data/abi_proxy/models/n2b/channel_radiance_power_law.json"
+DEFAULT_ECO_RESIDUALS = ROOT / "data/nominal_production/diagnostics/eco_spectral_residuals.csv"
 DEFAULT_ECO_SCENARIO = "rfma_goal_6"
 DEFAULT_TRAINING_MODE = "abi_population_weighted"
 DEFAULT_GOES_OUTPUT_DIR = ROOT / "figures" / "abi_proxy" / "diagnostics" / "n2bc"
@@ -207,7 +205,7 @@ def main(argv=None):
     )
     parser.add_argument(
         "--residuals-file", type=Path,
-        help="ECO only: saved assessment residual CSV (default: data/uncertainty/eco_spectral_residuals.csv)",
+        help="ECO only: saved assessment residual CSV (default: data/nominal_production/diagnostics/eco_spectral_residuals.csv)",
     )
     parser.add_argument("--scenario", help="ECO only: channel scenario (default: rfma_goal_6)")
     parser.add_argument(

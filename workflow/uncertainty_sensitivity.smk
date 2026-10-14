@@ -8,8 +8,8 @@ SENS_RUNNER = "scripts/run_product_sensitivity.py"
 SENS_CODE = [
     SENS_RUNNER, "src/product_sensitivity.py", *PRODUCTION_CODE,
     "src/nominal_budget.py", "src/nominal_streaming.py", "src/scene_features.py",
-    "src/geometry_sensitivity.py", "src/uncertainty.py", "scripts/run_nominal_budget.py",
-    SENS_SETTINGS, NOMINAL_SETTINGS_PATH, "config.yaml", ECO_CHANNEL_SCENARIOS_FILE,
+    "src/geometry_sensitivity.py", "src/uncertainty.py", "src/nominal_processing.py",
+    SENS_SETTINGS, *[str(path) for path in settings_paths(NOMINAL_SETTINGS_PATH)], "config.yaml", ECO_CHANNEL_SCENARIOS_FILE,
 ]
 SENS_COMMAND = (
     "OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 "
@@ -34,7 +34,7 @@ def sensitivity_shifted_components():
 
 def sensitivity_candidates(wildcards=None):
     """Fixed-seed K+-1 candidates used by the sensitivity variants."""
-    return [f"{NOM_DIR}/candidate_k{count}_s{NOM_GMM_SEED}.joblib{suffix}"
+    return [f"{NOM_CANDIDATE_DIR}/candidate_k{count}_s{NOM_GMM_SEED}.joblib{suffix}"
             for count in sensitivity_shifted_components()
             for suffix in ("", ".json")]
 
@@ -60,7 +60,7 @@ rule uncertainty_sensitivity_assessment:
     input:
         report=SENS_REPORT,
         variance_decomposition=UNCERTAINTY_FIGURES[0],
-        csv="docs/Uncertainty budget and propagation for ECO_LW - Sheet1.csv",
+        csv=BUDGET_CSV,
         diagnostics=f"{SENS['figure_dir']}/broadband_sensitivity.png",
         maps=f"{SENS['figure_dir']}/monthly_difference_maps.png"
 

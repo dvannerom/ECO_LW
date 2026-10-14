@@ -25,15 +25,15 @@ from uncertainty import build_provenance, sha256_file
 
 RESPONSE_CATALOG = ROOT / "config" / "eco_channel_scenarios.yaml"
 ERROR_BUDGET = ROOT / "config" / "error_budget.yaml"
-DEFAULT_SUNNY_DIR = ROOT / "data" / "Sunny"
-DEFAULT_METRICS = ROOT / "data" / "uncertainty" / "eco_spectral_reconstruction.json"
-DEFAULT_RESIDUALS = ROOT / "data" / "uncertainty" / "eco_spectral_residuals.csv"
-DEFAULT_N2BC_MODELS = ROOT / "data" / "uncertainty" / "eco_n2bc_cv_models.joblib"
-DEFAULT_N2BC_METRICS = ROOT / "data" / "uncertainty" / "eco_n2bc_stage_metrics.json"
-DEFAULT_ADM_DIR = ROOT / "data" / "uncertainty" / "eco_adm_retrieval"
-DEFAULT_ADM_METRICS = ROOT / "data" / "uncertainty" / "eco_adm_stage_metrics.json"
-DEFAULT_SCENE_MODEL = ROOT / "data" / "models" / "spectral_gmm.joblib"
-NOMINAL_DIR = ROOT / "data" / "uncertainty" / "nominal_production"
+DEFAULT_SUNNY_DIR = ROOT / "data/inputs/sunny"
+DEFAULT_METRICS = ROOT / "data/nominal_production/diagnostics/eco_spectral_reconstruction.json"
+DEFAULT_RESIDUALS = ROOT / "data/nominal_production/diagnostics/eco_spectral_residuals.csv"
+DEFAULT_N2BC_MODELS = ROOT / "data/nominal_production/models/eco_n2bc_cv_models.joblib"
+DEFAULT_N2BC_METRICS = ROOT / "data/nominal_production/diagnostics/eco_n2bc_stage_metrics.json"
+DEFAULT_ADM_DIR = ROOT / "data/nominal_production/products/spectral_assessment/narrowband_flux"
+DEFAULT_ADM_METRICS = ROOT / "data/nominal_production/diagnostics/eco_adm_stage_metrics.json"
+DEFAULT_SCENE_MODEL = ROOT / "data/scene_classification/models/spectral_gmm.joblib"
+NOMINAL_DIR = ROOT / "data/nominal_production/uncertainties/nominal_budget"
 DEFAULT_SUNNY_ABI = NOMINAL_DIR / "sunny.npz"
 TRAINING_MODE = "abi_population_weighted"
 REGRESSION_DEGREES = (1, 2, 3)
@@ -987,7 +987,7 @@ def main():
     parser.add_argument(
         "--abi-adm-evidence",
         type=Path,
-        default=ROOT / "data" / "uncertainty" / "abi_adm_proxy_summary.json",
+        default=ROOT / "data/abi_proxy/diagnostics/adm_proxy_summary.json",
     )
     args = parser.parse_args()
 

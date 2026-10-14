@@ -1,4 +1,8 @@
 import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 import json
 import numpy as np
 import argparse
@@ -11,7 +15,7 @@ from parallel_gmm import ParallelGaussianMixture
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description="GOES16/18 Scene ID with optional PCA+GMM")
-	parser.add_argument("-f", "--input_file", type=str, nargs="+", default="data/preprocessed_files/abi_pix1000_step5.nc")
+	parser.add_argument("-f", "--input_file", type=str, nargs="+", default="data/preprocessing/abi/abi_pix1000_step5.nc")
 	parser.add_argument("-l", "--lambda_center", type=float, default=-106)
 	parser.add_argument("-n", "--n_components", type=int, default=10, help="Number of GMM components")
 	parser.add_argument("--n_components_file", type=str, default=None,
@@ -107,7 +111,7 @@ if __name__ == '__main__':
 #	# -----------------------------
 #	# Save outputs (labels + settings)
 #	# -----------------------------
-#	out_npz_path = f"data/scene_id/scene_id_{suffix}.npz"
+#	out_npz_path = f"data/abi_proxy/products/scene_id/scene_id_{suffix}.npz"
 #	np.savez(out_npz_path,
 #	         labels=labels,
 #	         labels_nozeros=labels_nozeros,

@@ -207,9 +207,9 @@ def run_comparison(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--abi-files", nargs="+", type=Path, required=True)
-    parser.add_argument("--sunny-dir", type=Path, default=ROOT / "data" / "Sunny")
-    parser.add_argument("--filter-dir", type=Path, default=ROOT / "data" / "goes_channels")
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "data" / "abi_sunny_comparison")
+    parser.add_argument("--sunny-dir", type=Path, default=ROOT / "data/inputs/sunny")
+    parser.add_argument("--filter-dir", type=Path, default=ROOT / "data/inputs/goes_channels")
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "data/nominal_production/diagnostics/abi_sunny/comparison")
     parser.add_argument("--components", type=int, default=7)
     parser.add_argument("--points-per-file", type=int, default=50000)
     parser.add_argument("--pixel-step", type=int, default=10)

@@ -8,7 +8,7 @@ from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import PolynomialFeatures
 
 import abi_product
-import run_nominal_budget as nominal
+import nominal_processing as nominal
 import run_product_sensitivity as runner
 from nominal_budget import fit_pooled_shape, library_flux, population_weights
 from product_sensitivity import (
@@ -156,9 +156,9 @@ class BinLabeler:
 def write_day(directory, day, rng, height=23, width=17):
     from netCDF4 import Dataset
     from product_sensitivity import slab_spectral_features
-    (directory / "data/preprocessed_files").mkdir(parents=True, exist_ok=True)
-    (directory / "data/scene_id").mkdir(parents=True, exist_ok=True)
-    with Dataset(directory / f"data/preprocessed_files/abi_{day}_res2km_step1.nc", "w") as target:
+    (directory / "data/preprocessing/abi").mkdir(parents=True, exist_ok=True)
+    (directory / "data/abi_proxy/products/scene_id").mkdir(parents=True, exist_ok=True)
+    with Dataset(directory / f"data/preprocessing/abi/abi_{day}_res2km_step1.nc", "w") as target:
         for name, size in (("y", height), ("x", width), ("c", 9), ("p", 4)):
             target.createDimension(name, size)
         for name in ("lat_interp_grid", "lon_interp_grid"):
@@ -171,12 +171,12 @@ def write_day(directory, day, rng, height=23, width=17):
             target.createVariable(f"rad_{sat}_interp_corr", "f4", ("y", "x", "c"))[:] = radiance
             target.createVariable(f"BT_{sat}_interp", "f4", ("y", "x", "c"))[:] = bt
             target.createVariable(f"lza_{sat}_interp_corr", "f4", ("y", "x"))[:] = rng.uniform(0, 80, (height, width))
-    with Dataset(directory / f"data/preprocessed_files/abi_{day}_res2km_step1.nc") as source:
+    with Dataset(directory / f"data/preprocessing/abi/abi_{day}_res2km_step1.nc") as source:
         features, identified = slab_spectral_features(source, slice(0, height))
     labels = np.full(height * width, -1.)
     labels[identified] = BinLabeler(3).predict(features)
     labels[5] = -1.
-    with Dataset(directory / f"data/scene_id/scene_id_{day}_res2km_3comp.nc", "w") as target:
+    with Dataset(directory / f"data/abi_proxy/products/scene_id/scene_id_{day}_res2km_3comp.nc", "w") as target:
         target.createDimension("n", height * width)
         target.createVariable("labels", "i8", ("n",))[:] = labels.astype(np.int64)
         sorted_labels = labels.copy()
@@ -252,7 +252,7 @@ def test_abi_day_closes_on_production_product_and_assembles_monthly(tmp_path, mo
     # n2b_quadratic paired mean against an independent recomputation from the product BTs.
     from broadband import load_regression_coefficients
     from netCDF4 import Dataset
-    bt = np.stack([np.ma.filled(Dataset(f"data/narrowband_flux/narrowband_flux_245_res2km_C{c}.nc")
+    bt = np.stack([np.ma.filled(Dataset(f"data/abi_proxy/products/narrowband_flux/narrowband_flux_245_res2km_C{c}.nc")
                                 .variables["BT_G18"][:].astype(np.float64), np.nan) for c in range(6)], -1)
     bt = bt.reshape(-1, 6)
     base = n2b_flux(bt, load_regression_coefficients("coeffs.json", "cubic"))
@@ -276,7 +276,7 @@ def test_abi_day_closes_on_production_product_and_assembles_monthly(tmp_path, mo
     args = SimpleNamespace(days=["day_245.json", "day_246.json"], maps=["maps_245.npz", "maps_246.npz"],
                            sunny="sunny.json", monthly_maps="monthly.npz", output="report.json",
                            n2b_form="cubic", max_vza=70., settings=None)
-    monkeypatch.setattr(nominal, "SETTINGS", runner.ROOT / "config/nominal_budget_full.yaml")
+    monkeypatch.setattr(nominal, "SETTINGS", runner.ROOT / "config/gmm_component_selection.yaml")
     runner.assemble(args, sens, settings, {"resolution_km": 2})
     report = json.loads(Path("report.json").read_text())
     assert report["schema_version"] == 2

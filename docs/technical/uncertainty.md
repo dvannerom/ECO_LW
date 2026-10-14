@@ -17,8 +17,8 @@ The integrated workflow currently requests these distinct evidence products:
   and independence assumptions. The active settings are selected through
   `nominal_budget_settings` in [`workflow/Snakefile`](../../workflow/Snakefile);
   the production and full-diagnostics profiles are
-  [`config/nominal_budget_production.yaml`](../../config/nominal_budget_production.yaml)
-  and [`config/nominal_budget_full.yaml`](../../config/nominal_budget_full.yaml).
+  [`config/nominal_production.yaml`](../../config/nominal_production.yaml)
+  and [`config/gmm_component_selection.yaml`](../../config/gmm_component_selection.yaml).
 - **Production-aligned sensitivity** — paired, one-at-a-time changes to
   production choices. These are sensitivity results, not independent
   uncertainties to add to the nominal budget. The workflow implementation and
@@ -33,6 +33,37 @@ The integrated workflow currently requests these distinct evidence products:
 - **Evidence registry and gap report** — provenance-aware inventory of
   estimates, evidence freshness, and unquantified terms. The registry does not
   make missing terms zero or propagate every term through every ABI product.
+
+## Where the generated files go
+
+These directories have different roles; they are not two copies of the same
+uncertainty product:
+
+| Directory | Contents |
+| --- | --- |
+| `data/nominal_production/products/` | Clean held-out ECO/Sunny narrowband and broadband simulation fluxes; the separate scenario assessment has its own `spectral_assessment/` subtree. |
+| `data/nominal_production/uncertainties/` | Nominal-budget decomposition/residuals and production-aligned sensitivity results. |
+| `data/nominal_production/diagnostics/` | Population support and spectral/angular stage metrics. |
+| `data/nominal_production/reports/` | Evidence registry, gap report and generated unified budget CSV. |
+| `data/preprocessing/features/` | Reusable ABI feature caches consumed by the nominal-budget workflow (both the production and full-diagnostics profiles). |
+| `data/nominal_production/uncertainties/geometry/` | Optional extended sensitivity output, currently the ECO geometry diagnostic and its plotted figure. It is not part of the nominal budget. |
+
+The feature cache can be large and is retained for reuse by both profiles.
+Its name describes preprocessing, not an uncertainty experiment. Active paths
+are defined in the common settings and task-specific profiles; see the
+[workflow layout and migration guide](workflow.md#artifact-ownership).
+
+Some retained reports under `legacy/data/uncertainty/nominal/` and
+`legacy/data/diagnostics/nominal/` are snapshots from an older convergence run. Their
+provenance records point to the removed convergence cache; those paths are not
+inputs to the current configured workflow, but the original snapshots cannot
+be reproduced from that cache.
+
+Numerical tables are exported by `scripts/export_budget_tables.py`, independently
+of plotting. The nominal source/error-class CSV accompanies its budget under
+`data/nominal_production/uncertainties/nominal_budget/`; the unified evidence table
+is `data/nominal_production/reports/uncertainty_budget.csv`. Routine runs no longer
+overwrite a tracked spreadsheet under `docs/`.
 
 Run the integrated assessment with:
 
