@@ -10,7 +10,10 @@ from scipy.integrate import quad
 
 from adm import radiance_integrand, radiance_linear
 from adm_fitting import correct_radiance, fit_adm_scene
-from evaluate_eco_spectral_reconstruction import retrieve_narrowband_fluxes
+from evaluate_eco_spectral_reconstruction import (
+    retrieve_narrowband_fluxes,
+    summarize_adm_retrieval,
+)
 
 
 def physical_flux(amplitude, shape_parameter):
@@ -26,6 +29,48 @@ def physical_flux(amplitude, shape_parameter):
 
 
 class ADMNormalizationTests(unittest.TestCase):
+    def test_adm_summaries_use_abi_population_weights(self):
+        weights = np.array([0.8, 0.1, 0.1])
+        regimes = np.array(["clear", "clear", "cloudy"])
+        result = summarize_adm_retrieval(
+            estimated_flux=np.array([[1.0], [1.1], [1.2]]),
+            true_flux=np.ones((3, 1)),
+            shape_parameters=np.array([[-1.0], [0.0], [1.0]]),
+            fit_rms_percent=np.array([[0.0], [10.0], [20.0]]),
+            regimes=regimes,
+            weights=weights,
+            channel_names=["test_channel"],
+        )["test_channel"]
+
+        self.assertAlmostEqual(
+            result["narrowband_flux_error_percent"]["overall"]["bias_percent"],
+            3.0,
+        )
+        self.assertAlmostEqual(
+            result["narrowband_flux_error_percent"]["by_regime"]["clear"][
+                "bias_percent"
+            ],
+            10.0 / 9.0,
+        )
+        self.assertAlmostEqual(
+            result["shape_parameter"]["mean"],
+            -0.7,
+        )
+        self.assertAlmostEqual(
+            result["fit_residual_rms_percent"]["mean"],
+            3.0,
+        )
+        self.assertAlmostEqual(
+            result["fit_residual_rms_percent"]["p95"],
+            20.0,
+        )
+        self.assertAlmostEqual(
+            result["narrowband_flux_error_percent"]["overall"][
+                "effective_sample_size"
+            ],
+            1.0 / (0.8**2 + 0.1**2 + 0.1**2),
+        )
+
     def test_isotropic_normalization_is_unity(self):
         integral = quad(radiance_integrand, 0.0, 90.0, args=(0.0,))[0]
         self.assertAlmostEqual(integral, 1.0, places=12)

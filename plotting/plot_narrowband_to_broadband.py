@@ -34,8 +34,13 @@ DEFAULT_FILTER_DIR = ROOT / "data" / "goes_channels"
 DEFAULT_POWER_LAW = ROOT / "data" / "models" / "channel_radiance_power_law.json"
 DEFAULT_ECO_RESIDUALS = ROOT / "data" / "uncertainty" / "eco_spectral_residuals.csv"
 DEFAULT_ECO_SCENARIO = "rfma_goal_6"
-DEFAULT_TRAINING_MODE = "unstratified"
-TRAINING_MODES = ("unstratified", "clear_cloud_stratified")
+DEFAULT_TRAINING_MODE = "abi_population_weighted"
+DEFAULT_GOES_OUTPUT_DIR = ROOT / "figures" / "abi_proxy" / "diagnostics" / "n2bc"
+DEFAULT_ECO_OUTPUT_DIR = (
+    ROOT / "figures" / "nominal_production" / "uncertainties"
+    / "eco_spectral_assessment"
+)
+TRAINING_MODES = ("abi_population_weighted",)
 
 
 def load_goes_flux_predictions(coefficients_file, sunny_dir, filter_dir, power_law_file):
@@ -135,7 +140,7 @@ def plot_narrowband_to_broadband(
     sunny_dir=DEFAULT_SUNNY_DIR,
     filter_dir=DEFAULT_FILTER_DIR,
     power_law_file=DEFAULT_POWER_LAW,
-    output_dir=ROOT / "figures" / "diagnostics" / "n2bc",
+    output_dir: Path | None = None,
     *,
     sensor="goes",
     residuals_file=DEFAULT_ECO_RESIDUALS,
@@ -172,6 +177,8 @@ def plot_narrowband_to_broadband(
         title = f"ECO cubic N2BC: held-out {scenario}, {training_mode}"
     else:
         raise ValueError(f"Unsupported sensor: {sensor!r}")
+    if output_dir is None:
+        output_dir = DEFAULT_GOES_OUTPUT_DIR if sensor == "goes" else DEFAULT_ECO_OUTPUT_DIR
     return plot_flux_errors(flux_bb, flux_pred, Path(output_dir) / filename, title)
 
 
@@ -205,12 +212,12 @@ def main(argv=None):
     parser.add_argument("--scenario", help="ECO only: channel scenario (default: rfma_goal_6)")
     parser.add_argument(
         "--training-mode", choices=TRAINING_MODES,
-        help="ECO only: training mode (default: unstratified)",
+        help="ECO only: training mode (default: abi_population_weighted)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT / "figures" / "diagnostics" / "n2bc",
+        default=None,
         help="Directory for the diagnostic plot",
     )
     args = parser.parse_args(argv)

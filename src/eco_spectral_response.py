@@ -24,73 +24,34 @@ def load_channel_scenarios(path: str | Path) -> dict[str, dict[str, Any]]:
         channel_bands = scenario.get("channel_bands_um")
         if not channel_names or len(channel_names) != len(channel_bands):
             raise ValueError(f"scenario {name!r} has mismatched channel definitions")
-        if scenario.get("response_model") not in {"smooth_bands", "triangular_three"}:
+        if scenario.get("response_model") != "smooth_bands":
             raise ValueError(f"scenario {name!r} has an unsupported response model")
-        if scenario["response_model"] == "smooth_bands":
-            for band in channel_bands:
-                if len(band) != 2 or all(edge is None for edge in band):
-                    raise ValueError(f"scenario {name!r} has an invalid band")
-                lower, upper = band
-                if lower is not None and upper is not None and lower >= upper:
-                    raise ValueError(f"scenario {name!r} has non-increasing band edges")
+        for band in channel_bands:
+            if len(band) != 2 or any(edge is None for edge in band):
+                raise ValueError(f"scenario {name!r} has an invalid band")
+            if band[0] >= band[1]:
+                raise ValueError(f"scenario {name!r} has non-increasing band edges")
     return scenarios
 
 
 def channel_response_matrix(
     wavelength_um: np.ndarray, scenario: dict[str, Any], default_edge_slope_per_um: float
 ) -> np.ndarray:
-    """Return a (wavelength, channel) response matrix for one scenario."""
+    """Return responses[wavelength, channel] for one RfMA passband scenario.
+
+    Each passband [lower, upper] (um) gets idealized logistic edges with slope
+    edge_slope_per_um (um-1); responses are dimensionless in [0, 1].
+    """
     wavelength = np.asarray(wavelength_um, dtype=np.float64)
     if wavelength.ndim != 1 or not np.all(np.isfinite(wavelength)):
         raise ValueError("wavelength_um must be a finite one-dimensional array")
 
-    channel_bands = scenario["channel_bands_um"]
-    response_model = scenario["response_model"]
-    if response_model == "triangular_three":
-        if len(channel_bands) != 3:
-            raise ValueError("triangular_three requires exactly three channels")
-        (rise_start, rise_end), (plateau_start, plateau_end), (fall_start, fall_end) = channel_bands
-        responses = np.column_stack(
-            (
-                np.where(
-                    (wavelength >= rise_start) & (wavelength < rise_end),
-                    (wavelength - rise_start) / (rise_end - rise_start),
-                    0.0,
-                ),
-                np.where(
-                    (wavelength >= plateau_start) & (wavelength < plateau_end),
-                    1.0,
-                    0.0,
-                ),
-                np.where(
-                    (wavelength >= fall_start) & (wavelength < fall_end),
-                    (fall_end - wavelength) / (fall_end - fall_start),
-                    0.0,
-                ),
-            )
-        )
-    else:
-        edge_slope = float(scenario.get("edge_slope_per_um", default_edge_slope_per_um))
-        if edge_slope <= 0:
-            raise ValueError("edge_slope_per_um must be positive")
-        channels = []
-        for lower, upper in channel_bands:
-            response = np.ones_like(wavelength)
-            if lower is not None:
-                response *= expit(edge_slope * (wavelength - float(lower)))
-            if upper is not None:
-                response *= expit(edge_slope * (float(upper) - wavelength))
-            channels.append(response)
-        responses = np.column_stack(channels)
-
-        envelope_band = scenario.get("envelope_band_um")
-        if envelope_band is not None:
-            envelope_slope = float(
-                scenario.get("envelope_edge_slope_per_um", default_edge_slope_per_um)
-            )
-            envelope = expit(envelope_slope * (wavelength - envelope_band[0]))
-            envelope *= expit(envelope_slope * (envelope_band[1] - wavelength))
-            responses *= envelope[:, None]
+    edge_slope = float(scenario.get("edge_slope_per_um", default_edge_slope_per_um))
+    if edge_slope <= 0:
+        raise ValueError("edge_slope_per_um must be positive")
+    bands = np.asarray(scenario["channel_bands_um"], dtype=np.float64)
+    responses = expit(edge_slope * (wavelength[:, None] - bands[None, :, 0]))
+    responses *= expit(edge_slope * (bands[None, :, 1] - wavelength[:, None]))
 
     if not np.all(np.isfinite(responses)) or np.any(responses < 0):
         raise ValueError("channel responses must be finite and non-negative")

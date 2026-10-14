@@ -25,12 +25,12 @@ class NarrowbandToBroadbandPlotTests(unittest.TestCase):
             "reference_olr_w_m2", "predicted_olr_w_m2",
         ]
         self.rows = [
-            ["rfma_goal_6", "n2bc_only", "unstratified", "3", 200, 220],
-            ["rfma_goal_6", "n2bc_only", "unstratified", "3", 400, 380],
-            ["rfma_goal_6", "end_to_end", "unstratified", "3", 200, 999],
-            ["rfma_goal_6", "n2bc_only", "unstratified", "1", 200, 999],
-            ["rfma_goal_6", "n2bc_only", "clear_cloud_stratified", "3", 200, 201],
-            ["rfma_threshold_6", "n2bc_only", "unstratified", "3", 200, 202],
+            ["rfma_goal_6", "n2bc_only", "abi_population_weighted", "3", 200, 220],
+            ["rfma_goal_6", "n2bc_only", "abi_population_weighted", "3", 400, 380],
+            ["rfma_goal_6", "end_to_end", "abi_population_weighted", "3", 200, 999],
+            ["rfma_goal_6", "n2bc_only", "abi_population_weighted", "1", 200, 999],
+            ["rfma_goal_6", "n2bc_only", "legacy_mode", "3", 200, 201],
+            ["rfma_threshold_6", "n2bc_only", "abi_population_weighted", "3", 200, 202],
         ]
         with self.residuals.open("w", newline="") as handle:
             writer = csv.writer(handle)
@@ -39,9 +39,9 @@ class NarrowbandToBroadbandPlotTests(unittest.TestCase):
 
     def test_eco_selects_only_requested_cubic_n2bc_predictions(self):
         for scenario, mode, expected in (
-            ("rfma_goal_6", "unstratified", [220, 380]),
-            ("rfma_goal_6", "clear_cloud_stratified", [201]),
-            ("rfma_threshold_6", "unstratified", [202]),
+            ("rfma_goal_6", "abi_population_weighted", [220, 380]),
+            ("rfma_goal_6", "legacy_mode", [201]),
+            ("rfma_threshold_6", "abi_population_weighted", [202]),
         ):
             with self.subTest(scenario=scenario, mode=mode):
                 reference, prediction = plotter.load_eco_flux_predictions(
@@ -52,10 +52,10 @@ class NarrowbandToBroadbandPlotTests(unittest.TestCase):
 
     def test_eco_missing_groups_and_columns_fail_explicitly(self):
         with self.assertRaisesRegex(ValueError, "No cubic N2BC-only"):
-            plotter.load_eco_flux_predictions(self.residuals, "missing", "unstratified")
+            plotter.load_eco_flux_predictions(self.residuals, "missing", "abi_population_weighted")
         self.residuals.write_text("scenario_id\nrfma_goal_6\n")
         with self.assertRaisesRegex(ValueError, "missing columns"):
-            plotter.load_eco_flux_predictions(self.residuals, "rfma_goal_6", "unstratified")
+            plotter.load_eco_flux_predictions(self.residuals, "rfma_goal_6", "abi_population_weighted")
 
     def test_shared_plot_preserves_sign_and_mean_centering(self):
         figure, axis = MagicMock(), MagicMock()
@@ -119,7 +119,7 @@ class NarrowbandToBroadbandPlotTests(unittest.TestCase):
         goes.assert_not_called()
         self.assertEqual(
             output.name,
-            "narrowband_to_broadband_cubic_fit_error_eco_rfma_goal_6_unstratified.png",
+            "narrowband_to_broadband_cubic_fit_error_eco_rfma_goal_6_abi_population_weighted.png",
         )
         with output.open("rb") as handle:
             self.assertEqual(handle.read(8), b"\x89PNG\r\n\x1a\n")
@@ -128,10 +128,22 @@ class NarrowbandToBroadbandPlotTests(unittest.TestCase):
         fluxes = (np.array([200.0]), np.array([201.0]))
         with patch.object(plotter, "load_goes_flux_predictions", return_value=fluxes):
             with patch.object(plotter, "plot_flux_errors") as plot:
-                plotter.plot_narrowband_to_broadband(output_dir=self.directory)
+                plotter.plot_narrowband_to_broadband()
         self.assertEqual(
             plot.call_args.args[2],
-            self.directory / "narrowband_to_broadband_cubic_fit_error.png",
+            plotter.DEFAULT_GOES_OUTPUT_DIR
+            / "narrowband_to_broadband_cubic_fit_error.png",
+        )
+
+    def test_eco_default_uses_nominal_uncertainty_directory(self):
+        fluxes = (np.array([200.0]), np.array([201.0]))
+        with patch.object(plotter, "load_eco_flux_predictions", return_value=fluxes):
+            with patch.object(plotter, "plot_flux_errors") as plot:
+                plotter.plot_narrowband_to_broadband(sensor="eco")
+        self.assertEqual(
+            plot.call_args.args[2],
+            plotter.DEFAULT_ECO_OUTPUT_DIR
+            / "narrowband_to_broadband_cubic_fit_error_eco_rfma_goal_6_abi_population_weighted.png",
         )
 
     def test_cli_routes_eco_and_rejects_wrong_sensor_options(self):

@@ -10,10 +10,7 @@ import joblib
 import numpy as np
 import yaml
 from scipy.integrate import quad, simpson
-from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import GroupKFold
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -22,6 +19,7 @@ if str(SRC) not in sys.path:
 
 from eco_spectral_response import channel_response_matrix, load_channel_scenarios
 from adm import elmer, radiance_integrand
+from nominal_budget import classify, fit_n2bc, population_weights
 from uncertainty import build_provenance, sha256_file
 
 
@@ -34,6 +32,11 @@ DEFAULT_N2BC_MODELS = ROOT / "data" / "uncertainty" / "eco_n2bc_cv_models.joblib
 DEFAULT_N2BC_METRICS = ROOT / "data" / "uncertainty" / "eco_n2bc_stage_metrics.json"
 DEFAULT_ADM_DIR = ROOT / "data" / "uncertainty" / "eco_adm_retrieval"
 DEFAULT_ADM_METRICS = ROOT / "data" / "uncertainty" / "eco_adm_stage_metrics.json"
+DEFAULT_SCENE_MODEL = ROOT / "data" / "models" / "spectral_gmm.joblib"
+NOMINAL_DIR = ROOT / "data" / "uncertainty" / "nominal_production"
+DEFAULT_SUNNY_ABI = NOMINAL_DIR / "sunny.npz"
+TRAINING_MODE = "abi_population_weighted"
+REGRESSION_DEGREES = (1, 2, 3)
 
 
 def evaluation_provenance(args, input_paths):
@@ -43,6 +46,9 @@ def evaluation_provenance(args, input_paths):
             Path(__file__).resolve(),
             ROOT / "src" / "adm.py",
             ROOT / "src" / "eco_spectral_response.py",
+            ROOT / "src" / "nominal_budget.py",
+            ROOT / "src" / "abi_sunny_comparison.py",
+            ROOT / "src" / "scene_features.py",
         ),
         configuration_paths=(
             ROOT / "config.yaml",
@@ -203,27 +209,82 @@ def retrieve_narrowband_fluxes(channel_radiances, viewing_angles_deg):
 
 
 def summarize_adm_retrieval(
-    estimated_flux, true_flux, shape_parameters, fit_rms_percent, regimes, channel_names
+    estimated_flux,
+    true_flux,
+    shape_parameters,
+    fit_rms_percent,
+    regimes,
+    weights,
+    channel_names,
 ):
-    """Summarize ADM-fit and narrowband-flux errors by ECO channel and regime."""
+    """Summarize ABI-population-weighted ADM diagnostics by channel and regime."""
+    weights = np.asarray(weights, dtype=np.float64)
+    if (
+        weights.shape != regimes.shape
+        or np.any(~np.isfinite(weights))
+        or np.any(weights < 0)
+        or not weights.sum() > 0
+    ):
+        raise ValueError("ADM diagnostic weights must match Sunny scenes and be non-negative")
+
+    def weighted_values(values, subset_weights, include_sd=False, include_p95=False):
+        if not subset_weights.sum() > 0:
+            raise ValueError("ADM diagnostic subset has no ABI population weight")
+        values = np.asarray(values, dtype=np.float64)
+        normalized = subset_weights / subset_weights.sum()
+        mean = float(normalized @ values)
+        squared_weight_sum = float(normalized @ normalized)
+        summary = {
+            "mean": mean,
+            "effective_sample_size": 1.0 / squared_weight_sum,
+        }
+        if include_sd:
+            variance = (
+                float(normalized @ np.square(values - mean))
+                / (1.0 - squared_weight_sum)
+                if squared_weight_sum < 1.0
+                else np.nan
+            )
+            summary["standard_deviation"] = float(np.sqrt(variance))
+        if include_p95:
+            order = np.argsort(values)
+            sorted_values = values[order]
+            sorted_weights = normalized[order]
+            midpoint_cdf = np.cumsum(sorted_weights) - 0.5 * sorted_weights
+            summary["p95"] = float(
+                np.interp(
+                    0.95,
+                    midpoint_cdf,
+                    sorted_values,
+                    left=sorted_values[0],
+                    right=sorted_values[-1],
+                )
+            )
+        return summary
+
     channel_results = {}
+    scene_weights = weights / weights.sum()
     for channel_index, channel_name in enumerate(channel_names):
         relative_error_percent = (
             estimated_flux[:, channel_index] - true_flux[:, channel_index]
         ) / true_flux[:, channel_index] * 100.0
+        scene_weights = weights / weights.sum()
         channel_results[channel_name] = {
-            "shape_parameter": {
-                "mean": float(np.mean(shape_parameters[:, channel_index])),
-                "standard_deviation": float(np.std(shape_parameters[:, channel_index], ddof=1)),
-            },
-            "fit_residual_rms_percent": {
-                "mean": float(np.mean(fit_rms_percent[:, channel_index])),
-                "p95": float(np.percentile(fit_rms_percent[:, channel_index], 95)),
-            },
+            "shape_parameter": weighted_values(
+                shape_parameters[:, channel_index], scene_weights, include_sd=True
+            ),
+            "fit_residual_rms_percent": weighted_values(
+                fit_rms_percent[:, channel_index],
+                scene_weights,
+                include_p95=True,
+            ),
             "narrowband_flux_error_percent": {
-                "overall": summarize_errors(relative_error_percent),
+                "overall": summarize_errors(relative_error_percent, scene_weights),
                 "by_regime": {
-                    regime: summarize_errors(relative_error_percent[regimes == regime])
+                    regime: summarize_errors(
+                        relative_error_percent[regimes == regime],
+                        scene_weights[regimes == regime],
+                    )
                     for regime in np.unique(regimes)
                 },
             },
@@ -231,16 +292,83 @@ def summarize_adm_retrieval(
     return channel_results
 
 
-def summarize_errors(error_percent):
-    """Summarize relative reconstruction errors, retaining bias and scatter."""
-    standard_deviation = float(np.std(error_percent, ddof=1))
+def summarize_errors(error_percent, weights=None):
+    """Summarize relative OLR errors [%] for error_percent[n].
+
+    weights[n] >= 0 are ABI-population importance weights (renormalized here);
+    None means equal weights. The SD uses the unbiased reliability-weight
+    estimator, which reduces to ddof=1 for equal weights.
+    """
+    error_percent = np.asarray(error_percent, dtype=np.float64)
+    weights = (
+        np.ones_like(error_percent)
+        if weights is None
+        else np.asarray(weights, dtype=np.float64)
+    )
+    if (
+        weights.shape != error_percent.shape
+        or np.any(weights < 0)
+        or not weights.sum() > 0
+    ):
+        raise ValueError("Error weights must be non-negative with positive sum")
+    weights = weights / weights.sum()
+    squared_weight_sum = float(weights @ weights)
+    bias = float(weights @ error_percent)
+    variance = (
+        float(weights @ np.square(error_percent - bias)) / (1.0 - squared_weight_sum)
+        if squared_weight_sum < 1.0
+        else np.nan
+    )
+    standard_deviation = float(np.sqrt(variance))
     return {
         "n_spectra": int(error_percent.size),
-        "bias_percent": float(np.mean(error_percent)),
+        "effective_sample_size": 1.0 / squared_weight_sum,
+        "bias_percent": bias,
         "standard_deviation_percent": standard_deviation,
         "k2_scatter_percent": 2.0 * standard_deviation,
-        "rmse_percent": float(np.sqrt(np.mean(error_percent**2))),
-        "max_absolute_error_percent": float(np.max(np.abs(error_percent))),
+        "rmse_percent": float(np.sqrt(weights @ np.square(error_percent))),
+        "max_absolute_error_percent": float(
+            np.max(np.abs(error_percent[weights > 0]))
+        ),
+    }
+
+
+def weighted_breakdown(error_percent, weights, regimes, abi_labels, population):
+    """Population-weighted overall, per-Sunny-regime and per-ABI-scene summaries.
+
+    Regime and scene subsets renormalize the same weights; population_fraction
+    is the subset share of the weighted (covered) population.
+    """
+    weights = np.asarray(weights, dtype=np.float64) / np.sum(weights)
+
+    def subset(mask):
+        fraction = float(weights[mask].sum())
+        if fraction <= 0:
+            return {"population_fraction": 0.0, "n_spectra": int(mask.sum())}
+        return {
+            "population_fraction": fraction,
+            **summarize_errors(error_percent[mask], weights[mask]),
+        }
+
+    return {
+        "overall": summarize_errors(error_percent, weights),
+        "by_regime": {
+            str(regime): subset(regimes == regime) for regime in np.unique(regimes)
+        },
+        "by_abi_scene": {
+            str(scene): {
+                "abi_population_mass": float(population[scene]),
+                **subset(abi_labels == scene),
+            }
+            for scene in np.unique(abi_labels)
+        },
+    }
+
+
+def support_summary(support):
+    return {
+        key: support[key]
+        for key in ("covered_population", "missing_scenes", "effective_sample_size")
     }
 
 
@@ -267,198 +395,95 @@ def requirement_summary(error_budget, requirement_id):
     }
 
 
+def predict_n2bc(model, narrowband_flux):
+    """Apply a fitted (scaler, polynomial, regression) N2BC to flux[file, channel]."""
+    scaler, polynomial, regression = model
+    return regression.predict(polynomial.transform(scaler.transform(narrowband_flux)))
+
+
+def load_abi_scene_labels(scene_model_path, sunny_abi_path, scene_ids, regimes):
+    """Classify each Sunny file with the nominal ABI-trained GMM.
+
+    Uses the SRF-independent ABI-convolved Sunny radiances abi_radiance[file,
+    view, 6] prepared by the nominal budget; each file takes the majority-vote
+    scene over its views. Returns labels[file], vote_fraction[file] and the ABI
+    scene population[K] (fractions summing to one).
+    """
+    fitted = joblib.load(scene_model_path)
+    with np.load(sunny_abi_path) as source:
+        abi_radiance = source["abi_radiance"]
+        planck = source["planck"]
+        abi_scene_ids = source["groups"]
+        abi_regimes = source["regimes"]
+    if not (
+        np.array_equal(abi_scene_ids, scene_ids)
+        and np.array_equal(abi_regimes, regimes)
+    ):
+        raise ValueError(
+            "Sunny file ordering differs between the nominal ABI library and this assessment"
+        )
+    labels, vote_fraction = classify(fitted["model"], abi_radiance, planck)
+    return labels, vote_fraction, np.asarray(fitted["population"], dtype=np.float64)
+
+
 def evaluate_scenario(
-    true_channel_fluxes,
-    broadband_flux,
-    scene_ids,
-    regimes,
-    folds,
-    requirement_id,
-    adm_retrieved_fluxes=None,
+    true_channel_fluxes, broadband_flux, scene_ids, regimes, abi_labels, population, folds
 ):
-    splitter = GroupKFold(n_splits=folds)
-    model_results = {}
-    fold_models = {}
-    residual_rows = []
+    """Grouped-CV global N2BC fits weighted by ABI scene population.
+
+    Each training fold renormalizes population weights over its own supported
+    scenes, as in the nominal budget; known clear/cloud regimes are never used
+    for fitting or prediction.
+    """
     fold_splits = list(
-        splitter.split(true_channel_fluxes, broadband_flux, groups=scene_ids)
+        GroupKFold(n_splits=folds).split(true_channel_fluxes, groups=scene_ids)
     )
-    for training_mode in ("unstratified", "clear_cloud_stratified"):
-        training_mode_results = {}
-        training_mode_models = {}
-        for degree in (1, 2, 3):
-            predicted_n2bc_flux = np.full(
-                broadband_flux.shape, np.nan, dtype=np.float64
+    degree_models = {}
+    for degree in REGRESSION_DEGREES:
+        folds_for_degree = []
+        for fold_index, (train_indices, test_indices) in enumerate(fold_splits, start=1):
+            if set(scene_ids[train_indices]) & set(scene_ids[test_indices]):
+                raise RuntimeError("scene-index leakage across validation folds")
+            train_weights, train_support = population_weights(
+                abi_labels[train_indices], population
             )
-            predicted_end_to_end_flux = (
-                np.full(broadband_flux.shape, np.nan, dtype=np.float64)
-                if adm_retrieved_fluxes is not None
-                else None
+            model = fit_n2bc(
+                true_channel_fluxes[train_indices],
+                broadband_flux[train_indices],
+                train_weights,
+                degree,
             )
-            fold_number = np.full(broadband_flux.shape, -1, dtype=np.int16)
-            n2bc_fold_metrics = []
-            end_to_end_fold_metrics = []
-            degree_fold_models = []
-            for fold_index, (train_indices, test_indices) in enumerate(
-                fold_splits, start=1
-            ):
-                if set(scene_ids[train_indices]) & set(scene_ids[test_indices]):
-                    raise RuntimeError("scene-index leakage across validation folds")
-
-                if training_mode == "unstratified":
-                    model = make_pipeline(
-                        StandardScaler(),
-                        PolynomialFeatures(degree=degree, include_bias=False),
-                        LinearRegression(),
-                    )
-                    model.fit(
-                        true_channel_fluxes[train_indices], broadband_flux[train_indices]
-                    )
-                    predicted_n2bc_flux[test_indices] = model.predict(
-                        true_channel_fluxes[test_indices]
-                    )
-                    fold_models_for_test = {"all": model}
-                    if predicted_end_to_end_flux is not None:
-                        predicted_end_to_end_flux[test_indices] = model.predict(
-                            adm_retrieved_fluxes[test_indices]
-                        )
-                else:
-                    fold_models_for_test = {}
-                    for regime in np.unique(regimes):
-                        train_regime = train_indices[regimes[train_indices] == regime]
-                        test_regime = test_indices[regimes[test_indices] == regime]
-                        model = make_pipeline(
-                            StandardScaler(),
-                            PolynomialFeatures(degree=degree, include_bias=False),
-                            LinearRegression(),
-                        )
-                        model.fit(
-                            true_channel_fluxes[train_regime], broadband_flux[train_regime]
-                        )
-                        predicted_n2bc_flux[test_regime] = model.predict(
-                            true_channel_fluxes[test_regime]
-                        )
-                        fold_models_for_test[str(regime)] = model
-                        if predicted_end_to_end_flux is not None:
-                            predicted_end_to_end_flux[test_regime] = model.predict(
-                                adm_retrieved_fluxes[test_regime]
-                            )
-
-                fold_number[test_indices] = fold_index
-                n2bc_fold_error_percent = (
-                    predicted_n2bc_flux[test_indices] - broadband_flux[test_indices]
-                ) / broadband_flux[test_indices] * 100.0
-                n2bc_fold_metrics.append(
-                    {
-                        "fold": fold_index,
-                        **summarize_errors(n2bc_fold_error_percent),
-                    }
-                )
-                if predicted_end_to_end_flux is not None:
-                    end_to_end_fold_error_percent = (
-                        predicted_end_to_end_flux[test_indices]
-                        - broadband_flux[test_indices]
-                    ) / broadband_flux[test_indices] * 100.0
-                    end_to_end_fold_metrics.append(
-                        {
-                            "fold": fold_index,
-                            **summarize_errors(end_to_end_fold_error_percent),
-                        }
-                    )
-                degree_fold_models.append(
-                    {
-                        "fold": fold_index,
-                        "test_indices": test_indices.copy(),
-                        "models": fold_models_for_test,
-                    }
-                )
-
-            if (
-                np.any(~np.isfinite(predicted_n2bc_flux))
-                or np.any(fold_number < 1)
-            ):
-                raise RuntimeError("cross-validation did not predict every Sunny spectrum")
-            if predicted_end_to_end_flux is not None and np.any(
-                ~np.isfinite(predicted_end_to_end_flux)
-            ):
-                raise RuntimeError("end-to-end CV did not predict every Sunny spectrum")
-
-            n2bc_error_percent = (
-                predicted_n2bc_flux - broadband_flux
-            ) / broadband_flux * 100.0
-            n2bc_regime_metrics = {
-                regime: summarize_errors(n2bc_error_percent[regimes == regime])
-                for regime in np.unique(regimes)
-            }
-            training_mode_results[f"degree_{degree}"] = {
-                "requirement_id": requirement_id,
-                "n2bc_only": {
-                    "overall": summarize_errors(n2bc_error_percent),
-                    "by_regime": n2bc_regime_metrics,
-                    "fold_metrics": n2bc_fold_metrics,
-                },
-                "end_to_end": None,
-            }
-            if predicted_end_to_end_flux is not None:
-                end_to_end_error_percent = (
-                    predicted_end_to_end_flux - broadband_flux
-                ) / broadband_flux * 100.0
-                training_mode_results[f"degree_{degree}"]["end_to_end"] = {
-                    "overall": summarize_errors(end_to_end_error_percent),
-                    "by_regime": {
-                        regime: summarize_errors(
-                            end_to_end_error_percent[regimes == regime]
-                        )
-                        for regime in np.unique(regimes)
-                    },
-                    "fold_metrics": end_to_end_fold_metrics,
+            folds_for_degree.append(
+                {
+                    "fold": fold_index,
+                    "test_indices": test_indices.copy(),
+                    "model": model,
+                    "training_support": support_summary(train_support),
                 }
-            training_mode_models[f"degree_{degree}"] = degree_fold_models
-            for index in range(broadband_flux.size):
-                residual_rows.append(
-                    {
-                        "requirement_id": requirement_id,
-                        "training_mode": training_mode,
-                        "regression_degree": degree,
-                        "scene_index": scene_ids[index],
-                        "regime": regimes[index],
-                        "fold": int(fold_number[index]),
-                        "assessment_stage": "n2bc_only",
-                        "reference_olr_w_m2": float(broadband_flux[index]),
-                        "predicted_olr_w_m2": float(predicted_n2bc_flux[index]),
-                        "relative_error_percent": float(n2bc_error_percent[index]),
-                    }
-                )
-                if predicted_end_to_end_flux is not None:
-                    residual_rows.append(
-                        {
-                            "requirement_id": requirement_id,
-                            "training_mode": training_mode,
-                            "regression_degree": degree,
-                            "scene_index": scene_ids[index],
-                            "regime": regimes[index],
-                            "fold": int(fold_number[index]),
-                            "assessment_stage": "end_to_end",
-                            "reference_olr_w_m2": float(broadband_flux[index]),
-                            "predicted_olr_w_m2": float(
-                                predicted_end_to_end_flux[index]
-                            ),
-                            "relative_error_percent": float(
-                                end_to_end_error_percent[index]
-                            ),
-                        }
-                    )
-        model_results[training_mode] = training_mode_results
-        fold_models[training_mode] = training_mode_models
-    return model_results, residual_rows, fold_models
+            )
+        degree_models[f"degree_{degree}"] = folds_for_degree
+    return {TRAINING_MODE: degree_models}
 
 
 def apply_fold_models(
-    features, broadband_flux, scene_ids, regimes, fold_models, assessment_stage
+    features,
+    broadband_flux,
+    scene_ids,
+    regimes,
+    abi_labels,
+    weights,
+    population,
+    fold_models,
+    assessment_stage,
 ):
-    """Apply saved grouped-CV N2BC models to one narrowband-flux input set."""
+    """Apply saved grouped-CV N2BC models to one narrowband-flux input set.
+
+    features[file, channel] in W m-2; weights[file] are the full-sample ABI
+    population weights used for all reported statistics.
+    """
     results = {}
     residual_rows = []
+    weights = np.asarray(weights, dtype=np.float64) / np.sum(weights)
     for training_mode, degree_models in fold_models.items():
         mode_results = {}
         for degree_name, folds in degree_models.items():
@@ -467,42 +492,45 @@ def apply_fold_models(
             fold_metrics = []
             for fold in folds:
                 test_indices = fold["test_indices"]
-                models = fold["models"]
-                if "all" in models:
-                    predicted_flux[test_indices] = models["all"].predict(
-                        features[test_indices]
-                    )
-                else:
-                    for regime, model in models.items():
-                        test_regime = test_indices[regimes[test_indices] == regime]
-                        predicted_flux[test_regime] = model.predict(features[test_regime])
+                predicted_flux[test_indices] = predict_n2bc(
+                    fold["model"], features[test_indices]
+                )
                 fold_number[test_indices] = fold["fold"]
                 fold_error = (
                     predicted_flux[test_indices] - broadband_flux[test_indices]
                 ) / broadband_flux[test_indices] * 100.0
                 fold_metrics.append(
-                    {"fold": int(fold["fold"]), **summarize_errors(fold_error)}
+                    {
+                        "fold": int(fold["fold"]),
+                        **summarize_errors(fold_error, weights[test_indices]),
+                        "training_support": fold["training_support"],
+                    }
                 )
 
-            if np.any(~np.isfinite(predicted_flux)) or np.any(fold_number < 1):
+            if (
+                np.any(~np.isfinite(predicted_flux))
+                or np.any(predicted_flux <= 0)
+                or np.any(fold_number < 1)
+            ):
                 raise RuntimeError(f"{assessment_stage} CV did not predict every record")
             error_percent = (predicted_flux - broadband_flux) / broadband_flux * 100.0
             mode_results[degree_name] = {
-                "overall": summarize_errors(error_percent),
-                "by_regime": {
-                    regime: summarize_errors(error_percent[regimes == regime])
-                    for regime in np.unique(regimes)
-                },
+                **weighted_breakdown(
+                    error_percent, weights, regimes, abi_labels, population
+                ),
                 "fold_metrics": fold_metrics,
             }
+            degree = degree_name.removeprefix("degree_")
             for index in range(broadband_flux.size):
                 residual_rows.append(
                     {
                         "assessment_stage": assessment_stage,
                         "training_mode": training_mode,
-                        "regression_degree": degree_name.removeprefix("degree_"),
+                        "regression_degree": degree,
                         "scene_index": scene_ids[index],
                         "regime": regimes[index],
+                        "abi_scene": int(abi_labels[index]),
+                        "population_weight": float(weights[index]),
                         "fold": int(fold_number[index]),
                         "reference_olr_w_m2": float(broadband_flux[index]),
                         "predicted_olr_w_m2": float(predicted_flux[index]),
@@ -524,12 +552,8 @@ def scenario_metadata(scenario_id, scenario, channel_catalog):
         "edge_slope_per_um": scenario.get(
             "edge_slope_per_um", channel_catalog["default_edge_slope_per_um"]
         ),
-        "envelope_band_um": scenario.get("envelope_band_um"),
-        "envelope_edge_slope_per_um": scenario.get(
-            "envelope_edge_slope_per_um"
-        ),
         "idealized_response_note": (
-            "RfMA band limits do not specify flight SRFs; sigmoid or triangular responses are scenario assumptions."
+            "RfMA band limits do not specify flight SRFs; logistic band edges are scenario assumptions."
         ),
     }
 
@@ -574,17 +598,46 @@ def assessment_metadata(args, channel_catalog, broadband_flux, scene_ids, spectr
             "integration": "Simpson integration over the supplied spectrum, including its longwave extension to 500 um.",
             "angular_retrieval": retrieval_geometry["retrieval_note"],
             "adm_method": "Per-scene, per-channel least-squares fit of the repository radiance_linear(theta,b) profile using the 55-degree radiance as amplitude reference; retrieved fluxes use the repository radiance_integrand normalization.",
-            "limitation": "Library metadata supports clear/cloudy stratification only; shared indices are conservatively grouped but not assumed to be identical atmospheric profiles.",
+            "limitation": "Shared clear/cloud indices are conservatively grouped but not assumed to be identical atmospheric profiles; the clear/cloudy truth is reported as a diagnostic only.",
         },
         "validation": {
-            "method": "GroupKFold out-of-fold predictions",
+            "method": "GroupKFold out-of-fold predictions of one global, ABI-population-weighted N2BC",
             "group_key": "four-digit shared clear/cloud scene index",
             "folds": args.folds,
             "k2_convention": "2 times sample standard deviation; provisional comparison convention, not confirmed identical to the RfMA fitting-noise definition.",
         },
         "provenance": evaluation_provenance(
-            args, {"sunny_library": args.sunny_dir.resolve()}
+            args,
+            {
+                "sunny_library": args.sunny_dir.resolve(),
+                "abi_scene_model": args.scene_model.resolve(),
+                "sunny_abi_radiances": args.sunny_abi.resolve(),
+            },
         ),
+    }
+
+
+def scene_weighting_metadata(args, regimes, vote_fraction, population, weights, support):
+    return {
+        "method": (
+            "Each Sunny file is assigned the majority-vote ABI-GMM scene over its views; "
+            "weight = ABI population mass of that scene / Sunny files in that scene, "
+            "renormalized over supported scenes. Fits use training-fold weights; "
+            "all statistics use full-sample weights."
+        ),
+        "training_mode": TRAINING_MODE,
+        "scene_model": str(args.scene_model),
+        "sunny_abi_radiances": str(args.sunny_abi),
+        "abi_population": population.tolist(),
+        "sunny_scene_counts": support["scene_counts"],
+        "covered_population": support["covered_population"],
+        "missing_scenes": support["missing_scenes"],
+        "effective_sample_size": support["effective_sample_size"],
+        "view_vote_fraction": {
+            "mean": float(np.mean(vote_fraction)),
+            "minimum": float(np.min(vote_fraction)),
+        },
+        "clear_sky_population_fraction": float(weights[regimes == "clear_sky"].sum()),
     }
 
 
@@ -599,10 +652,23 @@ def fit_n2bc_stage(args, channel_catalog, scenarios):
     result_metadata = assessment_metadata(
         args, channel_catalog, broadband_flux, scene_ids, spectral_data
     )
+    abi_labels, vote_fraction, population = load_abi_scene_labels(
+        args.scene_model, args.sunny_abi, scene_ids, regimes
+    )
+    weights, support = population_weights(abi_labels, population)
+    scene_weighting = scene_weighting_metadata(
+        args, regimes, vote_fraction, population, weights, support
+    )
+    result_metadata["scene_weighting"] = scene_weighting
     model_bundle = {
-        "schema_version": 1,
+        "schema_version": 2,
         "folds": args.folds,
         "requirement_id": "ObsReq_16",
+        "training_mode": TRAINING_MODE,
+        "abi_labels": abi_labels,
+        "population_weights": weights,
+        "abi_population": population,
+        "scene_weighting": scene_weighting,
         "scenarios": {},
     }
     metrics = {**result_metadata, "stage": "n2bc_only_true_band_flux", "scenarios": {}}
@@ -612,24 +678,30 @@ def fit_n2bc_stage(args, channel_catalog, scenarios):
         true_narrowband_fluxes = integrate_true_channel_fluxes(
             spectral_data, scenario, channel_catalog["default_edge_slope_per_um"]
         )
-        regressions, _, fold_models = evaluate_scenario(
+        fold_models = evaluate_scenario(
             true_narrowband_fluxes,
             broadband_flux,
             scene_ids,
             regimes,
+            abi_labels,
+            population,
             args.folds,
-            "ObsReq_16",
+        )
+        regressions, _ = apply_fold_models(
+            true_narrowband_fluxes,
+            broadband_flux,
+            scene_ids,
+            regimes,
+            abi_labels,
+            weights,
+            population,
+            fold_models,
+            "n2bc_only",
         )
         metadata = scenario_metadata(scenario_id, scenario, channel_catalog)
         metrics["scenarios"][scenario_id] = {
             **metadata,
-            "regressions": {
-                mode: {
-                    degree: values["n2bc_only"]
-                    for degree, values in degree_results.items()
-                }
-                for mode, degree_results in regressions.items()
-            },
+            "regressions": regressions,
         }
         model_bundle["scenarios"][scenario_id] = {
             **metadata,
@@ -657,6 +729,13 @@ def retrieve_adm_stage(args, channel_catalog, scenarios):
             channel_catalog["retrieval_geometry"]["available_view_angles_deg"],
         )
     )
+    abi_labels, vote_fraction, population = load_abi_scene_labels(
+        args.scene_model, args.sunny_abi, scene_ids, regimes
+    )
+    weights, support = population_weights(abi_labels, population)
+    scene_weighting = scene_weighting_metadata(
+        args, regimes, vote_fraction, population, weights, support
+    )
     retrieval_geometry = channel_catalog["retrieval_geometry"]
     retrieval_view_angles = np.asarray(
         retrieval_geometry["retrieval_view_angles_deg"], dtype=np.float64
@@ -673,9 +752,15 @@ def retrieve_adm_stage(args, channel_catalog, scenarios):
         "target": "ECO",
         "geometry": retrieval_geometry,
         "scene_index_count": int(np.unique(scene_ids).size),
+        "scene_weighting": scene_weighting,
         "scenarios": {},
         "provenance": evaluation_provenance(
-            args, {"sunny_library": args.sunny_dir.resolve()}
+            args,
+            {
+                "sunny_library": args.sunny_dir.resolve(),
+                "abi_scene_model": args.scene_model.resolve(),
+                "sunny_abi_radiances": args.sunny_abi.resolve(),
+            },
         ),
     }
     args.adm_output_dir.mkdir(parents=True, exist_ok=True)
@@ -694,6 +779,7 @@ def retrieve_adm_stage(args, channel_catalog, scenarios):
             shape_parameters,
             fit_rms_percent,
             regimes,
+            weights,
             scenario["channel_names"],
         )
         stage_metrics["scenarios"][scenario_id] = adm_metrics
@@ -772,11 +858,17 @@ def combine_chain_stages(
         if not np.array_equal(regimes, model_data["regimes"]):
             raise ValueError(f"Sunny regime ordering differs between branches for {scenario_id}")
 
+        weighting = (
+            model_bundle["abi_labels"],
+            model_bundle["population_weights"],
+            model_bundle["abi_population"],
+        )
         n2bc_only_results, _ = apply_fold_models(
             model_data["true_narrowband_fluxes"],
             model_data["broadband_flux"],
             scene_ids,
             regimes,
+            *weighting,
             model_data["fold_models"],
             "n2bc_only",
         )
@@ -785,6 +877,7 @@ def combine_chain_stages(
             model_data["broadband_flux"],
             scene_ids,
             regimes,
+            *weighting,
             model_data["fold_models"],
             "end_to_end",
         )
@@ -821,6 +914,8 @@ def combine_chain_stages(
             "regression_degree",
             "scene_index",
             "regime",
+            "abi_scene",
+            "population_weight",
             "fold",
             "reference_olr_w_m2",
             "predicted_olr_w_m2",
@@ -841,6 +936,9 @@ def combine_chain_stages(
                     model_data["broadband_flux"],
                     model_data["scene_ids"],
                     model_data["regimes"],
+                    model_bundle["abi_labels"],
+                    model_bundle["population_weights"],
+                    model_bundle["abi_population"],
                     model_data["fold_models"],
                     assessment_stage,
                 )
@@ -881,6 +979,8 @@ def main():
     parser.add_argument("--n2bc-metrics-output", type=Path, default=DEFAULT_N2BC_METRICS)
     parser.add_argument("--n2bc-models-input", type=Path, default=DEFAULT_N2BC_MODELS)
     parser.add_argument("--n2bc-metrics-input", type=Path, default=DEFAULT_N2BC_METRICS)
+    parser.add_argument("--scene-model", type=Path, default=DEFAULT_SCENE_MODEL)
+    parser.add_argument("--sunny-abi", type=Path, default=DEFAULT_SUNNY_ABI)
     parser.add_argument("--adm-output-dir", type=Path, default=DEFAULT_ADM_DIR)
     parser.add_argument("--adm-metrics-output", type=Path, default=DEFAULT_ADM_METRICS)
     parser.add_argument("--adm-metrics-input", type=Path, default=DEFAULT_ADM_METRICS)
